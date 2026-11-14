@@ -1,5 +1,27 @@
 #!/bin/sh
-# 首启初始化：主机名、时区、默认密码、启动监控
+# 首启初始化：升级迁移、主机名、时区、默认密码、启动监控
+
+# ---- 从旧版（srouter）升级迁移 ----
+# sysupgrade 保留 /etc：配置文件名变了，不迁移会回到默认值
+# uci-defaults 按文件名顺序执行，先删掉旧脚本，避免它把主机名改回 SoftRouter
+rm -f /etc/uci-defaults/90-softrouter
+[ -f /etc/config/srouter ] && mv -f /etc/config/srouter /etc/config/longos
+[ -f /etc/sr-defaults ] && mv -f /etc/sr-defaults /etc/lo-defaults
+rm -rf /etc/srouter /etc/sr-version
+
+# 旧 init 脚本与 rc.d 软链会随 /etc 保留，不清理会再起一个指向已删除路径的守护进程
+if [ -f /etc/init.d/srouter ]; then
+	/etc/init.d/srouter stop 2>/dev/null
+	/etc/init.d/srouter disable 2>/dev/null
+	rm -f /etc/init.d/srouter /etc/rc.d/S90srouter /etc/rc.d/K10srouter
+fi
+
+# 防火墙里旧的 sr_* 段不会被 gen_firewall 清理（它只删 lo_*）
+for s in $(uci -q show firewall 2>/dev/null | sed -n "s/^firewall\.\(sr_[^.=]*\)=.*/\1/p"); do
+	uci -q delete "firewall.$s"
+done
+uci -q commit firewall 2>/dev/null
+
 [ -f /etc/config/longos ] || touch /etc/config/longos
 
 PW="admin"

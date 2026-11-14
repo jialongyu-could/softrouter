@@ -446,6 +446,6 @@ longos apply          # 按 UCI 重新生成全部原生配置
    `[ipv6-dhcp]`、`[pppd-compat]`），模块用下划线（`ipv6pool`、`ipv6_nd`、`ipv6_dhcp`、
    `pppd_compat`）。写错时 accel-ppp 会忽略整段，表现是「能拨号但拿不到地址」。启动失败或
    行为异常先看 `/var/log/accel-ppp/core.log`，再执行 `accel-cmd show sessions` 核对会话。
-6. **升级固件保留配置**：`/etc/config/longos` 是唯一配置源，升级后执行 `longos apply` 即可恢复。
+6. **升级固件保留配置**：`/etc/config/longos` 是唯一配置源，升级后执行 `longos apply` 即可恢复。从旧版（`srouter`）升级时 `/etc/uci-defaults/90-longos` 会自动迁移配置，并清理旧 init 脚本、rc.d 软链与 `sr_*` 防火墙段。
 7. **端口 80/443** 由 LuCI 使用；如需公网访问面板，请改端口并配置防火墙，不建议直接暴露。
 8. 本仓库未在 Windows 上编译验证（无 Linux 内核/工具链），构建脚本以 Debian 12 为基准。
