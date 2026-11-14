@@ -83,8 +83,12 @@ return view.extend({
 				api.field('启用 PPPoE 服务端', api.switchBox(!!d.enabled, 'enabled'))
 			]),
 			E('div', { 'class': 'sr-two' }, [
-				api.field('IPv6 链路前缀（/64，可留空）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': '2408:8207:1234::/64' })),
+				api.field('IPv6 链路前缀（/64，可留空）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': '2408:8207:1234:ff00::/64' })),
 				api.field('IPv6 委派池（PD）', api.input({ 'data-f': 'v6_prefix', 'value': d.v6_prefix || '', 'placeholder': '2408:8207:1234::/56' }), '优先从 WAN 自动检测，可手动改')
+			]),
+			E('div', { 'class': 'sr-two' }, [
+				api.field('每条会话委派长度', api.input({ 'data-f': 'v6_prefix_len', 'type': 'number', 'value': d.v6_prefix_len || 64 }), '上游 PD 为 /56 时通常委派 64'),
+				api.field('IPv6 模块', E('p', { 'class': 'sr-desc' }, [ 'ipv6pool / ipv6_dhcp / ipv6_nd 随 IPv6 双栈开关自动加载' ]))
 			]),
 			E('div', { 'class': 'sr-toolbar' }, [
 				api.btn('保存并应用', 'cbi-button-action', function() { self.save(); }),

@@ -523,7 +523,7 @@ EOF
 # ---------------- 配置生成：accel-ppp（PPPoE 服务端，IPv4 + IPv6 PD） ----------------
 
 gen_accelppp() {
-	local en device vlan ac svc localip netmask ps pe dns1 dns2 mtu lcp_i lcp_f v6 v6p v6link iface mods
+	local en device vlan ac svc localip ps pe dns1 dns2 mtu lcp_i lcp_f v6 v6p v6link v6len iface mods
 	config_load "$SR"
 	config_get_bool en pppoe enabled 0
 	config_get device pppoe device 'br-lan'
@@ -531,7 +531,6 @@ gen_accelppp() {
 	config_get ac pppoe ac_name 'SoftRouter'
 	config_get svc pppoe service_name 'sparrow'
 	config_get localip pppoe localip '192.168.200.1'
-	config_get netmask pppoe netmask '255.255.255.0'
 	config_get ps pppoe pool_start '192.168.200.100'
 	config_get pe pppoe pool_end '192.168.200.200'
 	config_get dns1 pppoe dns1 '223.5.5.5'
@@ -542,18 +541,30 @@ gen_accelppp() {
 	config_get_bool v6 pppoe v6 1
 	config_get v6p pppoe v6_prefix ''
 	config_get v6link pppoe v6_link ''
+	config_get v6len pppoe v6_prefix_len '64'
+	[ -n "$v6len" ] || v6len=64
 	iface=$(pppoe_ifname "$device" "$vlan")
 
 	mods="pppoe
+auth_pap
+auth_chap_md5
+auth_mschap_v1
+auth_mschap_v2
 chap-secrets
 ippool
-pppd-compat"
-	[ "$v6" = 1 ] && mods="$mods
+sigchld
+pppd_compat"
+	if [ "$v6" = 1 ]; then
+		mods="$mods
 ipv6pool
-ipv6nd"
+ipv6_dhcp
+ipv6_nd"
+	fi
 
 	mkdir -p /etc/accel-ppp /var/log/accel-ppp /etc/srouter
 
+	# 段名/参数名严格遵循 accel-ppp 官方文档：
+	# [ip-pool] [dns] [chap-secrets] [pppd-compat] [ipv6-pool] [ipv6-dhcp] [ipv6-nd]
 	{
 		cat <<EOF
 # 由 SoftRouter 生成，请勿手工修改
@@ -570,7 +581,13 @@ interface=$iface
 ac-name=$ac
 service-name=$svc
 called-sid=mac
+ip-pool=srv4
 verbose=1
+EOF
+		[ "$v6" = 1 ] && [ -n "$v6link" ] && echo "ipv6-pool=srv6"
+		[ "$v6" = 1 ] && [ -n "$v6p" ] && echo "ipv6-pool-delegate=srv6pd"
+
+		cat <<EOF
 
 [ppp]
 verbose=1
@@ -581,37 +598,48 @@ lcp-echo-interval=$lcp_i
 lcp-echo-failure=$lcp_f
 ipv4=require
 ipv6=$([ "$v6" = 1 ] && echo allow || echo deny)
+ipv6-intf-id=random
+ipv6-peer-intf-id=random
 
-[ipv4]
-netmask=$netmask
-gw=$localip
-pool=$ps-$pe
-dns=$dns1,$dns2
+[ip-pool]
+gw-ip-address=$localip
+$ps-$pe
+
+[dns]
+dns1=$dns1
+dns2=$dns2
 
 [chap-secrets]
-file=/etc/accel-ppp/chap-secrets
+chap-secrets=/etc/accel-ppp/chap-secrets
 
 [pppd-compat]
-ip-up-script=/etc/accel-ppp/ip-up.sh
-ip-down-script=/etc/accel-ppp/ip-down.sh
+verbose=1
+ip-up=/etc/accel-ppp/ip-up.sh
+ip-down=/etc/accel-ppp/ip-down.sh
 EOF
+
 		if [ "$v6" = 1 ]; then
 			cat <<EOF
 
-[ipv6]
-verbose=1
+[ipv6-nd]
+verbose=0
+AdvManagedFlag=0
+AdvOtherConfigFlag=1
 EOF
-			[ -n "$v6link" ] && echo "prefix=$v6link"
+			if [ -n "$v6link" ] || [ -n "$v6p" ]; then
+				cat <<EOF
+
+[ipv6-pool]
+EOF
+				[ -n "$v6link" ] && echo "$v6link,64,name=srv6"
+				[ -n "$v6p" ] && echo "delegate=$v6p,$v6len,name=srv6pd"
+			fi
 			if [ -n "$v6p" ]; then
 				cat <<EOF
 
-[ipv6pool]
-name=sparrow-pd
-prefix=$v6p
-delegate=1
-
-[ipv6nd]
+[ipv6-dhcp]
 verbose=1
+route-via-gw=1
 EOF
 			fi
 		fi

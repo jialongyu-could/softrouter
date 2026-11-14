@@ -221,41 +221,58 @@ logread -e pppd | tail -30
 ```ini
 [modules]
 pppoe
+auth_pap
+auth_chap_md5
+auth_mschap_v1
+auth_mschap_v2
 chap-secrets
 ippool
+sigchld
+pppd_compat
 ipv6pool
-ipv6nd
-pppd-compat
+ipv6_dhcp
+ipv6_nd
 
 [pppoe]
-interface=br-lan          # 或 eth1.100
+interface=br-lan                # 或 eth1.100
 ac-name=SoftRouter
 service-name=sparrow
+ip-pool=srv4
+ipv6-pool=srv6                  # 有链路前缀时才下发
+ipv6-pool-delegate=srv6pd       # 有 PD 池时才下发
 
 [ppp]
 mtu=1492
 ipv4=require
 ipv6=allow
+ipv6-intf-id=random             # 固定标识会让所有会话共用同一个接口标识
+ipv6-peer-intf-id=random
 
-[ipv4]
-netmask=255.255.255.0
-gw=192.168.200.1
-pool=192.168.200.100-192.168.200.200
-dns=223.5.5.5,119.29.29.29
+[ip-pool]                       # 注意：不是 [ipv4]
+gw-ip-address=192.168.200.1
+192.168.200.100-192.168.200.200
 
-[ipv6]
-verbose=1
-prefix=2408:8207:1234::/64      # 链路 /64（可选）
-dns=223.5.5.5,119.29.29.29
+[dns]                           # DNS 单独成段，不在 [ip-pool] 里
+dns1=223.5.5.5
+dns2=119.29.29.29
 
-[ipv6pool]
-name=sparrow-pd
-prefix=2408:8207:1234::/56      # 上游委派前缀
-delegate=1
+[chap-secrets]
+chap-secrets=/etc/accel-ppp/chap-secrets
 
 [pppd-compat]
-ip-up-script=/etc/accel-ppp/ip-up.sh
-ip-down-script=/etc/accel-ppp/ip-down.sh
+ip-up=/etc/accel-ppp/ip-up.sh
+ip-down=/etc/accel-ppp/ip-down.sh
+
+[ipv6-nd]
+AdvManagedFlag=0
+AdvOtherConfigFlag=1
+
+[ipv6-pool]
+2408:8207:1234:ff00::/64,64,name=srv6
+delegate=2408:8207:1234::/56,64,name=srv6pd
+
+[ipv6-dhcp]                     # 真正下发 PD 的模块（RFC 3633）
+route-via-gw=1
 ```
 
 账号文件 `/etc/accel-ppp/chap-secrets`：
@@ -277,8 +294,10 @@ tail -f /var/log/accel-ppp/core.log
 ```
 
 > IPv6 PD 前提：上游 WAN 必须拿到委派前缀（`ifstatus wan1 | jq '."ipv6-prefix-assignment"'`）。
-> 面板「使用检测到的 WAN 前缀」会读取该值并自动拆出链路 /64。若所用 accel-ppp 版本
-> 不识别 `delegate`，删除该行并改用 RADIUS 下发 `Delegated-IPv6-Prefix`。
+> 面板「使用检测到的 WAN 前缀」会读取该值并自动拆出链路 /64 与 PD 池。
+> 客户端侧 PD 由 `[ipv6-dhcp]`（模块名 `ipv6_dhcp`）通过 DHCPv6 下发，客户端路由器
+> 需开启 DHCPv6-PD 客户端（OpenWrt 里是 `reqprefix auto`）。链路前缀（`[ipv6-pool]`
+> 与 `ipv6-pool=`）只影响 PPP 接口自身的地址，删掉也不影响 PD 委派。
 
 ### 3. DHCPv4 / DHCPv6 / RA
 
@@ -421,8 +440,10 @@ srouter apply          # 按 UCI 重新生成全部原生配置
 2. **同一台机器只应有一个 PPPoE 服务端实例**；入口网卡与 LAN 网桥不要重复绑定。
 3. **IPv6 PD 依赖上游委派**；未获取到前缀时，先排查 `ifstatus <wan>` 的 `ipv6-prefix*` 字段。
 4. **cake 带宽按运营商实际速率填写**，填高会加剧 bufferbloat；上行建议为实测值的 90%~95%。
-5. **accel-ppp 版本差异**：`delegate=1`、`[ipv6pool]` 行为随版本略有差异，启动失败时查看
-   `/var/log/accel-ppp/core.log`，或注释该行后用 RADIUS 下发前缀。
+5. **accel-ppp 段名/模块名区分**：段用连字符（`[ip-pool]`、`[ipv6-pool]`、`[ipv6-nd]`、
+   `[ipv6-dhcp]`、`[pppd-compat]`），模块用下划线（`ipv6pool`、`ipv6_nd`、`ipv6_dhcp`、
+   `pppd_compat`）。写错时 accel-ppp 会忽略整段，表现是「能拨号但拿不到地址」。启动失败或
+   行为异常先看 `/var/log/accel-ppp/core.log`，再执行 `accel-cmd show sessions` 核对会话。
 6. **升级固件保留配置**：`/etc/config/srouter` 是唯一配置源，升级后执行 `srouter apply` 即可恢复。
 7. **端口 80/443** 由 LuCI 使用；如需公网访问面板，请改端口并配置防火墙，不建议直接暴露。
 8. 本仓库未在 Windows 上编译验证（无 Linux 内核/工具链），构建脚本以 Debian 12 为基准。
