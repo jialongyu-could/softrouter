@@ -65,7 +65,7 @@ define Package/accel-ppp/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_DIR) $(1)/etc/accel-ppp
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/accel-ppp $(1)/usr/sbin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/accel-pppd $(1)/usr/sbin/accel-ppp
 	[ -f $(PKG_INSTALL_DIR)/usr/sbin/accel-cmd ] && \
 		$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/accel-cmd $(1)/usr/sbin/ || true
 	$(INSTALL_BIN) ./files/accel-ppp.init $(1)/etc/init.d/accel-ppp
