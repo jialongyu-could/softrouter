@@ -1,6 +1,6 @@
 {
 	"luci-app-srouter": {
-		"description": "SoftRouter 软路由管理",
+		"description": "LongOS 软路由管理",
 		"read": {
 			"file": {
 				"exec": {

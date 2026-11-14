@@ -39,7 +39,7 @@ PROMPT 0
 TIMEOUT 30
 
 LABEL softrouter
-	MENU LABEL SoftRouter (OpenWrt x86_64)
+	MENU LABEL LongOS (OpenWrt x86_64)
 	KERNEL memdisk
 	APPEND initrd=softrouter.img raw
 EOF

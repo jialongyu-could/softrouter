@@ -1,5 +1,5 @@
 #!/bin/bash
-# 在 Linux 构建机（Debian 12/Ubuntu 22.04+）上编译 SoftRouter 固件
+# 在 Linux 构建机（Debian 12/Ubuntu 22.04+）上编译 LongOS 固件
 # 依赖：git make gcc g++ libncurses-dev zlib1g-dev gawk unzip file wget rsync python3
 # 用法：
 #   bash build-firmware.sh                # 默认 OpenWrt v24.10.4
@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="${WORK:-$HOME/softrouter-build}"
+WORK="${WORK:-$HOME/longos-build}"
 OPENWRT_VERSION="${OPENWRT_VERSION:-v24.10.4}"
 OPENWRT_REPO="${OPENWRT_REPO:-https://github.com/openwrt/openwrt.git}"
 JOBS="${JOBS:-$(nproc)}"
@@ -39,7 +39,7 @@ echo "==> 注入自定义 accel-ppp 软件包"
 rm -rf package/accel-ppp
 cp -a "$SRC_DIR/build/package/accel-ppp" package/accel-ppp
 
-echo "==> 注入 SoftRouter overlay"
+echo "==> 注入 LongOS overlay"
 rm -rf files
 cp -a "$SRC_DIR/overlay" files
 # Windows 下拷贝会丢失执行位，这里统一修复

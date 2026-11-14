@@ -1,5 +1,5 @@
 #!/bin/sh
-# SoftRouter 监控采集守护进程
+# LongOS 监控采集守护进程
 # - 每 5 秒采样 WAN 速率写入历史（供面板趋势图）
 # - 每 30 秒对每条线路做 IPv4 / IPv6 延迟与丢包探测
 # 输出：/tmp/sr_hist.tsv（ts rx tx），/tmp/sr_line.json（按线路的探测结果）

@@ -9,7 +9,7 @@ PW="admin"
 		printf '%s\n%s\n' "$PW" "$PW" | passwd root >/dev/null 2>&1
 }
 
-uci -q set system.@system[0].hostname='SoftRouter'
+uci -q set system.@system[0].hostname='LongOS'
 uci -q set system.@system[0].timezone='CST-8'
 uci -q set system.@system[0].zonename='Asia/Shanghai'
 uci -q commit system

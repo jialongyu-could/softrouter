@@ -120,7 +120,7 @@ return view.extend({
 				E('h3', {}, [ '系统操作' ]),
 				E('div', { 'class': 'sr-toolbar' }, [
 					api.btn('重启设备', 'cbi-button-negative', function() {
-						api.confirm('确定重启软路由？', function() {
+						api.confirm('确定重启 LongOS？', function() {
 							api.call('reboot').then(function() {
 								api.notify('设备正在重启，请稍候重新连接', 'warning');
 							});

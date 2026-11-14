@@ -15,7 +15,7 @@ PKG_SOURCE_URL:=https://github.com/accel-ppp/accel-ppp/archive/refs/tags/
 PKG_HASH:=skip
 
 PKG_LICENSE:=GPL-2.0
-PKG_MAINTAINER:=SoftRouter
+PKG_MAINTAINER:=LongOS
 
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_DEPENDS:=libpcre2

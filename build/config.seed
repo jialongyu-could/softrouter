@@ -1,4 +1,4 @@
-# SoftRouter 固件编译基线配置（x86_64 / PVE 虚拟机）
+# LongOS 固件编译基线配置（x86_64 / PVE 虚拟机）
 # 用法：复制为 openwrt/.config 后执行 make defconfig
 CONFIG_TARGET_x86=y
 CONFIG_TARGET_x86_64=y

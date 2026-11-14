@@ -1,4 +1,4 @@
-# SoftRouter —— OpenWrt 软路由固件（VLAN 多 WAN + accel-ppp 双栈 + 爱快风格面板）
+# LongOS —— OpenWrt 软路由固件（VLAN 多 WAN + accel-ppp 双栈 + 爱快风格面板）
 
 面向 PVE 虚拟机 / x86 物理机，基于 OpenWrt 定制：
 
@@ -91,14 +91,14 @@ bash build-iso.sh out/openwrt-x86-64-generic-squashfs-combined.img.gz
 cd softrouter
 git init -b main
 git add .
-git commit -m "SoftRouter: OpenWrt firmware with accel-ppp + LuCI panel"
+git commit -m "LongOS: OpenWrt firmware with accel-ppp + LuCI panel"
 git remote add origin git@github.com:<你的账号>/softrouter.git
 git push -u origin main
 ```
 
 触发方式：
 
-- **手动**：Actions → `Build SoftRouter Firmware` → `Run workflow`，可填 OpenWrt 版本与并行度
+- **手动**：Actions → `Build LongOS Firmware` → `Run workflow`，可填 OpenWrt 版本与并行度
 - **打 tag**：`git tag v1.0.0 && git push origin v1.0.0`，构建成功后自动创建 Release 并附上镜像
 - 每次构建都会上传 `img.gz`、`iso` 与 `SHA256SUMS` 三个产物，保留 30 天
 
@@ -116,7 +116,7 @@ git push -u origin main
 
 ```bash
 gzip -d openwrt-x86-64-generic-squashfs-combined.img.gz
-qm create 200 --name SoftRouter --memory 4096 --cores 4 --cpu host \
+qm create 200 --name LongOS --memory 4096 --cores 4 --cpu host \
   --net0 virtio,bridge=vmbr0 --net1 virtio,bridge=vmbr0 \
   --scsihw virtio-scsi-pci --ostype l26
 qm importdisk 200 openwrt-x86-64-generic-squashfs-combined.img local-lvm
@@ -156,7 +156,7 @@ ifreload -a
 
 ### 4. 首次登录
 
-- 地址：`http://<LAN IP>`（面板菜单：**服务 → SoftRouter**）
+- 地址：`http://<LAN IP>`（面板菜单：**服务 → LongOS**）
 - 默认 root 密码：`admin`（可在 `build` 时用 `/etc/sr-defaults` 覆盖，登录后请立即修改）
 - 首次使用顺序：**线路与网络** 添加 WAN → **PPPoE 服务端** 设置入口与账号 → **流控与分流**
 
@@ -235,7 +235,7 @@ ipv6_nd
 
 [pppoe]
 interface=br-lan                # 或 eth1.100
-ac-name=SoftRouter
+ac-name=LongOS
 service-name=sparrow
 ip-pool=srv4
 ipv6-pool=srv6                  # 有链路前缀时才下发
@@ -268,8 +268,8 @@ AdvManagedFlag=0
 AdvOtherConfigFlag=1
 
 [ipv6-pool]
-2408:8207:1234:ff00::/64,64,name=srv6
-delegate=2408:8207:1234::/56,64,name=srv6pd
+fd00:1::/64,64,name=srv6                      # 链路地址用独立 ULA，不占用 PD 池
+delegate=2408:8207:1234::/56,64,name=srv6pd   # 整个 /56 全部用于委派
 
 [ipv6-dhcp]                     # 真正下发 PD 的模块（RFC 3633）
 route-via-gw=1
@@ -294,10 +294,12 @@ tail -f /var/log/accel-ppp/core.log
 ```
 
 > IPv6 PD 前提：上游 WAN 必须拿到委派前缀（`ifstatus wan1 | jq '."ipv6-prefix-assignment"'`）。
-> 面板「使用检测到的 WAN 前缀」会读取该值并自动拆出链路 /64 与 PD 池。
+> 面板「使用检测到的 WAN 前缀」只填 PD 池，**链路前缀保持为空**——若把 PD 池里的第一个 /64
+> 同时用作 PPP 链路前缀，它会和委派给第一个客户端的 /64 重叠，服务端会认为该前缀直连，
+> 导致客户端 LAN 不通。确实需要链路全局地址时，用一段独立的 ULA（如 `fd00:1::/64`）。
 > 客户端侧 PD 由 `[ipv6-dhcp]`（模块名 `ipv6_dhcp`）通过 DHCPv6 下发，客户端路由器
-> 需开启 DHCPv6-PD 客户端（OpenWrt 里是 `reqprefix auto`）。链路前缀（`[ipv6-pool]`
-> 与 `ipv6-pool=`）只影响 PPP 接口自身的地址，删掉也不影响 PD 委派。
+> 需开启 DHCPv6-PD 客户端（OpenWrt 里是 `reqprefix auto`）。这里的 `ipv6-pool=` 只影响
+> PPP 接口自身地址，留空不影响 PD 委派。
 
 ### 3. DHCPv4 / DHCPv6 / RA
 

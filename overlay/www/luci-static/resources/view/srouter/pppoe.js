@@ -7,23 +7,6 @@
 function v(box, n) { var e = box.querySelector('[data-f="' + n + '"]'); return e ? e.value.trim() : ''; }
 function cb(box, n) { var e = box.querySelector('[data-f="' + n + '"] input[type="checkbox"]'); return !!(e && e.checked); }
 
-function expandV6(addr) {
-	var halves = String(addr || '').split('::');
-	var left = halves[0] ? halves[0].split(':') : [];
-	var right = (halves.length > 1 && halves[1]) ? halves[1].split(':') : [];
-	var miss = 8 - left.length - right.length;
-	var mid = [];
-	for (var i = 0; i < miss; i++) mid.push('0');
-	return left.concat(mid).concat(right).map(function(h) { return ('0000' + h).slice(-4); });
-}
-
-function link64(prefix) {
-	if (!prefix) return '';
-	var addr = String(prefix).split('/')[0];
-	if (addr.indexOf(':') < 0) return '';
-	return expandV6(addr).slice(0, 4).join(':') + '::/64';
-}
-
 return view.extend({
 	load: function() {
 		return Promise.all([ api.call('pppoe'), api.call('ifaces'), api.call('status') ]);
@@ -55,7 +38,7 @@ return view.extend({
 				api.field('VLAN ID（0 为不打标签）', api.input({ 'data-f': 'vlan', 'type': 'number', 'value': d.vlan || 0 }), '填 100 时自动创建 ethX.100 作为拨号入口')
 			]),
 			E('div', { 'class': 'sr-two' }, [
-				api.field('AC 名称', api.input({ 'data-f': 'ac_name', 'value': d.ac_name || 'SoftRouter' })),
+				api.field('AC 名称', api.input({ 'data-f': 'ac_name', 'value': d.ac_name || 'LongOS' })),
 				api.field('Service 名称', api.input({ 'data-f': 'service_name', 'value': d.service_name || 'sparrow' }))
 			]),
 			E('div', { 'class': 'sr-two' }, [
@@ -83,7 +66,7 @@ return view.extend({
 				api.field('启用 PPPoE 服务端', api.switchBox(!!d.enabled, 'enabled'))
 			]),
 			E('div', { 'class': 'sr-two' }, [
-				api.field('IPv6 链路前缀（/64，可留空）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': '2408:8207:1234:ff00::/64' })),
+				api.field('IPv6 链路前缀（/64，可留空）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': 'fd00:1::/64' }), '留空即可；填 PD 池内的前缀会与委派前缀重叠'),
 				api.field('IPv6 委派池（PD）', api.input({ 'data-f': 'v6_prefix', 'value': d.v6_prefix || '', 'placeholder': '2408:8207:1234::/56' }), '优先从 WAN 自动检测，可手动改')
 			]),
 			E('div', { 'class': 'sr-two' }, [
@@ -97,8 +80,8 @@ return view.extend({
 					if (!s) { api.notify('未从 WAN 检测到委派前缀，请确认上游 IPv6 已下发', 'warning'); return; }
 					var box = self.box;
 					box.querySelector('[data-f="v6_prefix"]').value = s;
-					box.querySelector('[data-f="v6_link"]').value = link64(s);
-					api.notify('已填入 ' + s + '（链路前缀 ' + link64(s) + '）', 'info');
+					box.querySelector('[data-f="v6_link"]').value = '';
+					api.notify('已填入 PD 池 ' + s + '；链路前缀已清空，避免与委派出去的 /64 重叠', 'info');
 				}),
 				E('span', { 'class': 'grow' }),
 				api.badge(d.running ? 'accel-ppp 运行中' : 'accel-ppp 未运行', d.running ? 'ok' : 'warn')

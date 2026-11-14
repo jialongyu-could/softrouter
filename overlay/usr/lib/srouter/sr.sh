@@ -1,5 +1,5 @@
 #!/bin/sh
-# SoftRouter 控制核心
+# LongOS 控制核心
 # 面板通过 rpcd file.exec 调用，子命令 + JSON 入参，统一输出 JSON
 # 职责：UCI 配置 -> 生成 OpenWrt 原生配置（network/dhcp/mwan3/firewall/sqm/accel-ppp）
 #       状态采集（线路速率、CPU/内存、PPPoE 在线、IPv4/IPv6 探测历史）
@@ -523,12 +523,12 @@ EOF
 # ---------------- 配置生成：accel-ppp（PPPoE 服务端，IPv4 + IPv6 PD） ----------------
 
 gen_accelppp() {
-	local en device vlan ac svc localip ps pe dns1 dns2 mtu lcp_i lcp_f v6 v6p v6link v6len iface mods
+	local en device vlan ac svc localip ps pe dns1 dns2 mtu lcp_i lcp_f v6 v6p v6link v6len plen iface mods
 	config_load "$SR"
 	config_get_bool en pppoe enabled 0
 	config_get device pppoe device 'br-lan'
 	config_get vlan pppoe vlan '0'
-	config_get ac pppoe ac_name 'SoftRouter'
+	config_get ac pppoe ac_name 'LongOS'
 	config_get svc pppoe service_name 'sparrow'
 	config_get localip pppoe localip '192.168.200.1'
 	config_get ps pppoe pool_start '192.168.200.100'
@@ -542,7 +542,18 @@ gen_accelppp() {
 	config_get v6p pppoe v6_prefix ''
 	config_get v6link pppoe v6_link ''
 	config_get v6len pppoe v6_prefix_len '64'
-	[ -n "$v6len" ] || v6len=64
+	# 前缀格式非法（必须含 ":" 和 "/"）时直接丢弃，避免写出坏配置
+	case "$v6p" in *:*/*) ;; *) v6p='' ;; esac
+	case "$v6link" in *:*/*) ;; *) v6link='' ;; esac
+	# 委派长度必须为数字且不小于 PD 池掩码；相等时整池只能服务 1 个客户端
+	case "$v6len" in ''|*[!0-9]*) v6len=64 ;; esac
+	plen=64
+	[ -n "$v6p" ] && plen=${v6p#*/}
+	case "$plen" in ''|*[!0-9]*) plen=64 ;; esac
+	if [ "$v6len" -lt "$plen" ] 2>/dev/null; then
+		# 小于池掩码时优先回到 64，避免整池只能服务一个客户端
+		if [ "$plen" -le 64 ] 2>/dev/null; then v6len=64; else v6len=$plen; fi
+	fi
 	iface=$(pppoe_ifname "$device" "$vlan")
 
 	mods="pppoe
@@ -567,7 +578,7 @@ ipv6_nd"
 	# [ip-pool] [dns] [chap-secrets] [pppd-compat] [ipv6-pool] [ipv6-dhcp] [ipv6-nd]
 	{
 		cat <<EOF
-# 由 SoftRouter 生成，请勿手工修改
+# 由 LongOS 生成，请勿手工修改
 [modules]
 $mods
 
@@ -648,7 +659,7 @@ EOF
 
 	# 账号密码
 	{
-		echo "# 由 SoftRouter 生成：用户 服务 密码 静态IPv4"
+		echo "# 由 LongOS 生成：用户 服务 密码 静态IPv4"
 		local aid aen au ap aip
 		for aid in $(account_ids); do
 			config_get_bool aen "$aid" enabled 0
@@ -847,7 +858,7 @@ gen_trea() {
 	config_get extra trea extra ''
 
 	{
-		echo "# 由 SoftRouter 生成，字段含义请以麻雀云 trea 官方文档为准"
+		echo "# 由 LongOS 生成，字段含义请以麻雀云 trea 官方文档为准"
 		echo "server = \"$server\""
 		echo "token = \"$token\""
 		echo "iface = \"$iface\""
@@ -1054,7 +1065,7 @@ save_pppoe() {
 	uci set "$SR.pppoe.engine=accel-ppp"
 	uci set "$SR.pppoe.device=${device:-br-lan}"
 	uci set "$SR.pppoe.vlan=${vlan:-0}"
-	uci set "$SR.pppoe.ac_name=${ac:-SoftRouter}"
+	uci set "$SR.pppoe.ac_name=${ac:-LongOS}"
 	uci set "$SR.pppoe.service_name=${svc:-sparrow}"
 	uci set "$SR.pppoe.localip=${localip:-192.168.200.1}"
 	uci set "$SR.pppoe.netmask=${netmask:-255.255.255.0}"
@@ -1374,7 +1385,7 @@ cmd_status() {
 	config_get ports lan ports 'eth0'
 	config_get dns1 settings dns1 '223.5.5.5'
 	config_get dns2 settings dns2 '119.29.29.29'
-	config_get hostname settings hostname 'SoftRouter'
+	config_get hostname settings hostname 'LongOS'
 	config_get_bool ppp_en pppoe enabled 0
 	config_get ppp_max pppoe maxsessions '200'
 	config_get ppp_svc pppoe service_name 'sparrow'
@@ -1478,7 +1489,7 @@ cmd_pppoe() {
 	config_get_bool en pppoe enabled 0
 	config_get device pppoe device 'br-lan'
 	config_get vlan pppoe vlan '0'
-	config_get ac pppoe ac_name 'SoftRouter'
+	config_get ac pppoe ac_name 'LongOS'
 	config_get svc pppoe service_name 'sparrow'
 	config_get localip pppoe localip '192.168.200.1'
 	config_get netmask pppoe netmask '255.255.255.0'
@@ -1629,7 +1640,7 @@ cmd_trea() {
 cmd_settings() {
 	config_load "$SR"
 	local hostname dns1 dns2 p4 p6 interval tz
-	config_get hostname settings hostname 'SoftRouter'
+	config_get hostname settings hostname 'LongOS'
 	config_get dns1 settings dns1 '223.5.5.5'
 	config_get dns2 settings dns2 '119.29.29.29'
 	config_get p4 settings ping4 '223.5.5.5'

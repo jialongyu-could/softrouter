@@ -1,6 +1,6 @@
 {
 	"admin/services/srouter": {
-		"title": "SoftRouter",
+		"title": "LongOS",
 		"order": 30,
 		"action": {
 			"type": "firstchild"

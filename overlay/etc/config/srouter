@@ -1,8 +1,8 @@
-# SoftRouter 核心配置（面板读写本文件，再由 sr.sh 生成 OpenWrt 原生配置）
+# LongOS 核心配置（面板读写本文件，再由 sr.sh 生成 OpenWrt 原生配置）
 # 不要手工修改运行中的 network/dhcp/mwan3/accel-ppp，统一改这里后执行 srouter apply
 
 config settings 'settings'
-	option hostname 'SoftRouter'
+	option hostname 'LongOS'
 	option dns1 '223.5.5.5'
 	option dns2 '119.29.29.29'
 	option ping4 '223.5.5.5'
@@ -32,7 +32,7 @@ config pppoe 'pppoe'
 	option engine 'accel-ppp'
 	option device 'br-lan'
 	option vlan '0'
-	option ac_name 'SoftRouter'
+	option ac_name 'LongOS'
 	option service_name 'sparrow'
 	option localip '192.168.200.1'
 	option netmask '255.255.255.0'

@@ -1,7 +1,7 @@
-name: Build SoftRouter Firmware
+name: Build LongOS Firmware
 
 # 触发方式：
-#   1) 手动：Actions -> Build SoftRouter Firmware -> Run workflow
+#   1) 手动：Actions -> Build LongOS Firmware -> Run workflow
 #   2) 打 tag：git tag v1.0.0 && git push origin v1.0.0  （会自动创建 Release）
 #   3) 推送 main 分支
 on:
@@ -145,7 +145,7 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: softrouter-${{ env.OPENWRT_VERSION }}-${{ github.run_number }}
+          name: longos-${{ env.OPENWRT_VERSION }}-${{ github.run_number }}
           if-no-files-found: error
           retention-days: 30
           path: |
@@ -157,7 +157,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## SoftRouter 构建结果"
+            echo "## LongOS 构建结果"
             echo ""
             echo "- OpenWrt: \`$OPENWRT_VERSION\`"
             echo "- 并行度: \`$JOBS\`"
@@ -176,7 +176,7 @@ jobs:
             openwrt/bin/targets/x86/64/*combined*.iso
             openwrt/bin/targets/x86/64/SHA256SUMS
           body: |
-            SoftRouter 固件，基于 OpenWrt ${{ env.OPENWRT_VERSION }}（x86_64 / Generic）。
+            LongOS 固件，基于 OpenWrt ${{ env.OPENWRT_VERSION }}（x86_64 / Generic）。
 
             导入 PVE：
 

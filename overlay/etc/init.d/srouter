@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# SoftRouter 监控守护进程
+# LongOS 监控守护进程
 START=90
 STOP=10
 USE_PROCD=1
