@@ -48,7 +48,6 @@ config pppoe 'pppoe'
 	option v6_link ''
 	option v6_prefix ''
 	option v6_prefix_len '64'
-	option v6_pool_len '56'
 
 # 麻雀云 trea 调度客户端（二进制由麻雀云提供，放置 /usr/bin/trea）
 config trea 'trea'
