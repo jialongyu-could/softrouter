@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=accel-ppp
 PKG_VERSION:=1.14.0
-PKG_RELEASE:=3
+PKG_RELEASE:=4
 
 PKG_SOURCE:=$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/accel-ppp/accel-ppp/archive/refs/tags/
@@ -18,7 +18,7 @@ PKG_LICENSE:=GPL-2.0
 PKG_MAINTAINER:=LongOS
 
 PKG_BUILD_PARALLEL:=1
-PKG_BUILD_DEPENDS:=pcre2
+PKG_BUILD_DEPENDS:=pcre2 libucontext
 
 include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/cmake.mk
@@ -26,7 +26,7 @@ include $(INCLUDE_DIR)/cmake.mk
 define Package/accel-ppp
   SECTION:=net
   CATEGORY:=Network
-  DEPENDS:=+kmod-pppoe +kmod-pppox +libpcre2 +libopenssl +libpthread +librt +libatomic
+  DEPENDS:=+kmod-pppoe +kmod-pppox +libpcre2 +libucontext +libopenssl +libpthread +librt +libatomic
   TITLE:=High performance PPPoE/PPTP/L2TP/SSTP/IPoE server
   URL:=https://accel-ppp.org
 endef
