@@ -1,0 +1,25 @@
+{
+	"luci-app-longos": {
+		"description": "LongOS 软路由管理",
+		"read": {
+			"file": {
+				"exec": {
+					"/usr/lib/longos/lo.sh": [ "root" ]
+				},
+				"read": [ "/etc/longos-version" ]
+			},
+			"ubus": {
+				"file": [ "exec" ],
+				"service": [ "list" ],
+				"system": [ "board" ]
+			}
+		},
+		"write": {
+			"file": {
+				"exec": {
+					"/usr/lib/longos/lo.sh": [ "root" ]
+				}
+			}
+		}
+	}
+}

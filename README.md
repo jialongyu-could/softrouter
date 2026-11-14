@@ -26,15 +26,15 @@ softrouter/
 │   ├── config.seed                # x86_64 编译基线（包选择）
 │   └── package/accel-ppp/         # accel-ppp 的 OpenWrt 打包
 ├── overlay/                       # 直接覆盖到固件根文件系统
-│   ├── etc/config/srouter         # 面板唯一配置源（UCI）
+│   ├── etc/config/longos         # 面板唯一配置源（UCI）
 │   ├── etc/accel-ppp/             # 会话上下线钩子（登记在线、按账号限速）
-│   ├── etc/init.d/srouter         # 监控采集守护进程
+│   ├── etc/init.d/longos         # 监控采集守护进程
 │   ├── etc/init.d/trea            # trea 托管
 │   ├── etc/uci-defaults/          # 首启初始化
-│   ├── etc/sr-version
-│   ├── usr/lib/srouter/sr.sh      # 后端核心：配置生成 + 状态采集
-│   ├── usr/lib/srouter/monitor.sh # 速率历史 + 延迟探测
-│   ├── usr/sbin/srouter           # 命令行入口
+│   ├── etc/longos-version
+│   ├── usr/lib/longos/lo.sh      # 后端核心：配置生成 + 状态采集
+│   ├── usr/lib/longos/monitor.sh # 速率历史 + 延迟探测
+│   ├── usr/sbin/longos           # 命令行入口
 │   ├── usr/share/luci/menu.d/     # 面板菜单
 │   ├── usr/share/rpcd/acl.d/      # 面板执行权限
 │   └── www/luci-static/resources/ # 面板页面与样式
@@ -44,11 +44,11 @@ softrouter/
 配置链路（单向）：
 
 ```
-面板 → UCI(/etc/config/srouter) → sr.sh 生成
+面板 → UCI(/etc/config/longos) → lo.sh 生成
         ├── /etc/config/network
         ├── /etc/config/dhcp
         ├── /etc/config/mwan3
-        ├── /etc/config/firewall（仅 sr_* 段）
+        ├── /etc/config/firewall（仅 lo_* 段）
         ├── /etc/config/sqm
         ├── /etc/accel-ppp.conf + chap-secrets + limits
         └── /etc/trea.conf
@@ -157,7 +157,7 @@ ifreload -a
 ### 4. 首次登录
 
 - 地址：`http://<LAN IP>`（面板菜单：**服务 → LongOS**）
-- 默认 root 密码：`admin`（可在 `build` 时用 `/etc/sr-defaults` 覆盖，登录后请立即修改）
+- 默认 root 密码：`admin`（可在 `build` 时用 `/etc/lo-defaults` 覆盖，登录后请立即修改）
 - 首次使用顺序：**线路与网络** 添加 WAN → **PPPoE 服务端** 设置入口与账号 → **流控与分流**
 
 ---
@@ -174,14 +174,14 @@ ifreload -a
 | 线路监控 | IPv4/IPv6 延迟与丢包、30 分钟历史流量、IPv6 地址/前缀/PD、物理网卡状态 |
 | 系统与 trea | 主机名/DNS/探测目标、管理员密码、trea 配置与启停、日志、重启 |
 
-面板所有动作最终都通过 `/usr/lib/srouter/sr.sh` 执行，可脱离面板用命令行复现与会话排查。
+面板所有动作最终都通过 `/usr/lib/longos/lo.sh` 执行，可脱离面板用命令行复现与会话排查。
 
 ### 为什么选 LuCI 而不是自研前后端
 
 - 底层全部是 UCI / netifd / procd，LuCI 原生适配，省掉一套配置持久化与权限体系；
 - 单进程 uhttpd + rpcd，资源占用低，适合软路由长期运行；
 - 表格、弹窗、轮询、图表都由本仓库的 `api.js` 封装，页面仍是标准 LuCI 视图；
-- 后续若要做独立 App/小程序，直接复用 `sr.sh` 的 JSON 命令即可，无需改底层。
+- 后续若要做独立 App/小程序，直接复用 `lo.sh` 的 JSON 命令即可，无需改底层。
 
 ---
 
@@ -318,22 +318,22 @@ ifstatus lan | jq '."ipv6-prefix-assignment"'
 
 ### 4. DMZ 与端口映射
 
-面板写入 `firewall` 的 `sr_*` 段，等价命令：
+面板写入 `firewall` 的 `lo_*` 段，等价命令：
 
 ```bash
-uci set firewall.sr_dmz=redirect
-uci set firewall.sr_dmz.name='SR-DMZ'
-uci set firewall.sr_dmz.src='wan'
-uci set firewall.sr_dmz.dest='lan'
-uci set firewall.sr_dmz.dest_ip='192.168.100.100'
-uci set firewall.sr_dmz.proto='all'
-uci set firewall.sr_dmz.target='DNAT'
+uci set firewall.lo_dmz=redirect
+uci set firewall.lo_dmz.name='LongOS-DMZ'
+uci set firewall.lo_dmz.src='wan'
+uci set firewall.lo_dmz.dest='lan'
+uci set firewall.lo_dmz.dest_ip='192.168.100.100'
+uci set firewall.lo_dmz.proto='all'
+uci set firewall.lo_dmz.target='DNAT'
 
-uci set firewall.sr_dmz_fwd=rule
-uci set firewall.sr_dmz_fwd.src='wan'
-uci set firewall.sr_dmz_fwd.dest='lan'
-uci set firewall.sr_dmz_fwd.dest_ip='192.168.100.100'
-uci set firewall.sr_dmz_fwd.target='ACCEPT'
+uci set firewall.lo_dmz_fwd=rule
+uci set firewall.lo_dmz_fwd.src='wan'
+uci set firewall.lo_dmz_fwd.dest='lan'
+uci set firewall.lo_dmz_fwd.dest_ip='192.168.100.100'
+uci set firewall.lo_dmz_fwd.target='ACCEPT'
 uci commit firewall
 /etc/init.d/firewall reload
 ```
@@ -358,7 +358,7 @@ tc -s qdisc show dev pppoe-wan1
 tc -s filter show dev pppoe-wan1 parent ffff:
 ```
 
-按账号限速由 `/etc/accel-ppp/ip-up.sh` 在会话上线时读取 `/etc/srouter/limits` 并下发。
+按账号限速由 `/etc/accel-ppp/ip-up.sh` 在会话上线时读取 `/etc/longos/limits` 并下发。
 
 ### 6. mwan3 分流
 
@@ -386,9 +386,9 @@ ping -c 3 -W 2 -I pppoe-wan1 223.5.5.5
 ping6 -c 3 -W 2 -I pppoe-wan1 2400:3200::1
 
 # 本固件监控进程
-/etc/init.d/srouter status
-cat /tmp/sr_line.json
-tail -5 /tmp/sr_hist.tsv
+/etc/init.d/longos status
+cat /tmp/lo_line.json
+tail -5 /tmp/lo_hist.tsv
 ```
 
 ### 8. 麻雀云 trea
@@ -427,11 +427,11 @@ interval = 60
 ### 9. 命令行入口
 
 ```bash
-srouter status | jq .
-srouter wans | jq .
-srouter pppoe | jq .
-srouter monitor | jq .
-srouter apply          # 按 UCI 重新生成全部原生配置
+longos status | jq .
+longos wans | jq .
+longos pppoe | jq .
+longos monitor | jq .
+longos apply          # 按 UCI 重新生成全部原生配置
 ```
 
 ---
@@ -446,6 +446,6 @@ srouter apply          # 按 UCI 重新生成全部原生配置
    `[ipv6-dhcp]`、`[pppd-compat]`），模块用下划线（`ipv6pool`、`ipv6_nd`、`ipv6_dhcp`、
    `pppd_compat`）。写错时 accel-ppp 会忽略整段，表现是「能拨号但拿不到地址」。启动失败或
    行为异常先看 `/var/log/accel-ppp/core.log`，再执行 `accel-cmd show sessions` 核对会话。
-6. **升级固件保留配置**：`/etc/config/srouter` 是唯一配置源，升级后执行 `srouter apply` 即可恢复。
+6. **升级固件保留配置**：`/etc/config/longos` 是唯一配置源，升级后执行 `longos apply` 即可恢复。
 7. **端口 80/443** 由 LuCI 使用；如需公网访问面板，请改端口并配置防火墙，不建议直接暴露。
 8. 本仓库未在 Windows 上编译验证（无 Linux 内核/工具链），构建脚本以 Debian 12 为基准。

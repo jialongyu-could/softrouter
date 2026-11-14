@@ -1,0 +1,188 @@
+name: Build LongOS Firmware
+
+# 触发方式：
+#   1) 手动：Actions -> Build LongOS Firmware -> Run workflow
+#   2) 打 tag：git tag v1.0.0 && git push origin v1.0.0  （会自动创建 Release）
+#   3) 推送 main 分支
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_version:
+        description: 'OpenWrt 版本（tag）'
+        required: true
+        default: 'v24.10.4'
+      jobs:
+        description: '并行编译度'
+        required: true
+        default: '4'
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    env:
+      OPENWRT_VERSION: ${{ inputs.openwrt_version || 'v24.10.4' }}
+      JOBS: ${{ inputs.jobs || '4' }}
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 释放磁盘空间
+        run: |
+          echo "==> 清理构建机无用组件"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo apt-get clean
+          df -h /
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gcc-multilib g++-multilib \
+            libncurses-dev libssl-dev libelf-dev zlib1g-dev \
+            bison flex gawk gettext unzip file wget rsync \
+            python3 python3-setuptools python3-pip \
+            git make cmake pkg-config \
+            xorriso isolinux syslinux-common
+          python3 --version
+
+      - name: 缓存 OpenWrt dl 目录
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: lo-dl-${{ env.OPENWRT_VERSION }}-${{ hashFiles('build/config.seed') }}
+          restore-keys: |
+            lo-dl-${{ env.OPENWRT_VERSION }}-
+
+      - name: 克隆 OpenWrt ${{ env.OPENWRT_VERSION }}
+        run: |
+          git clone --depth 1 -b "$OPENWRT_VERSION" \
+            https://github.com/openwrt/openwrt.git openwrt
+          cd openwrt
+          git log -1 --oneline
+
+      - name: 更新 feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: 注入 accel-ppp 与 overlay
+        run: |
+          rm -rf openwrt/package/accel-ppp openwrt/files
+          cp -a build/package/accel-ppp openwrt/package/accel-ppp
+          cp -a overlay openwrt/files
+          chmod 755 openwrt/files/usr/lib/longos/lo.sh \
+                    openwrt/files/usr/lib/longos/monitor.sh \
+                    openwrt/files/usr/sbin/longos \
+                    openwrt/files/etc/init.d/longos \
+                    openwrt/files/etc/init.d/trea \
+                    openwrt/files/etc/uci-defaults/90-longos \
+                    openwrt/files/etc/accel-ppp/ip-up.sh \
+                    openwrt/files/etc/accel-ppp/ip-down.sh
+          find openwrt/files -maxdepth 4 -type f | sort
+
+      - name: 生成 .config
+        run: |
+          cp build/config.seed openwrt/.config
+          cd openwrt
+          make defconfig
+          if ! grep -q '^CONFIG_PACKAGE_accel-ppp=y' .config; then
+            echo "错误：accel-ppp 未被选入固件"
+            exit 1
+          fi
+          echo "==> 关键包检查"
+          grep -E '^CONFIG_PACKAGE_(accel-ppp|mwan3|sqm-scripts|luci)=y' .config || true
+
+      - name: 下载源码包
+        run: |
+          cd openwrt
+          make download -j"$JOBS" || make download -j1 V=s
+
+      - name: 编译固件
+        run: |
+          cd openwrt
+          make -j"$JOBS" || make -j1 V=s
+
+      - name: 检查产物
+        run: |
+          ls -lh openwrt/bin/targets/x86/64/
+          test -n "$(ls openwrt/bin/targets/x86/64/*combined*.img.gz 2>/dev/null)" \
+            || { echo "错误：未生成 combined 镜像"; exit 1; }
+          echo "==> accel-ppp 软件包"
+          ls -lh openwrt/bin/packages/x86_64/base/accel-ppp*.ipk 2>/dev/null || true
+
+      - name: 打包 ISO（BIOS/SeaBIOS）
+        run: |
+          IMG_GZ="$(ls openwrt/bin/targets/x86/64/*combined*.img.gz | head -1)"
+          echo "输入镜像: $IMG_GZ"
+          bash build/build-iso.sh "$IMG_GZ"
+          cp -f "${IMG_GZ%.img.gz}.iso" openwrt/bin/targets/x86/64/
+
+      - name: 生成 SHA256
+        run: |
+          cd openwrt/bin/targets/x86/64
+          sha256sum *combined*.img.gz *combined*.iso > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: longos-${{ env.OPENWRT_VERSION }}-${{ github.run_number }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            openwrt/bin/targets/x86/64/*combined*.img.gz
+            openwrt/bin/targets/x86/64/*combined*.iso
+            openwrt/bin/targets/x86/64/SHA256SUMS
+
+      - name: 写入构建摘要
+        if: always()
+        run: |
+          {
+            echo "## LongOS 构建结果"
+            echo ""
+            echo "- OpenWrt: \`$OPENWRT_VERSION\`"
+            echo "- 并行度: \`$JOBS\`"
+            echo ""
+            echo '```'
+            ls -lh openwrt/bin/targets/x86/64/ 2>/dev/null || echo "无产物"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 发布 Release（tag 触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            openwrt/bin/targets/x86/64/*combined*.img.gz
+            openwrt/bin/targets/x86/64/*combined*.iso
+            openwrt/bin/targets/x86/64/SHA256SUMS
+          body: |
+            LongOS 固件，基于 OpenWrt ${{ env.OPENWRT_VERSION }}（x86_64 / Generic）。
+
+            导入 PVE：
+
+            ```bash
+            gzip -d openwrt-x86-64-generic-squashfs-combined.img.gz
+            qm importdisk <vmid> openwrt-x86-64-generic-squashfs-combined.img local-lvm
+            ```
+
+            默认面板地址 http://192.168.100.1 ，默认密码 admin。

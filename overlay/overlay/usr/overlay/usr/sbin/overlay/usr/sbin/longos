@@ -1,0 +1,3 @@
+#!/bin/sh
+# LongOS 命令行入口：longos <子命令> [JSON]
+exec /usr/lib/longos/lo.sh "$@"

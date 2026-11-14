@@ -1,0 +1,24 @@
+#!/bin/sh
+# 首启初始化：主机名、时区、默认密码、启动监控
+[ -f /etc/config/longos ] || touch /etc/config/longos
+
+PW="admin"
+[ -f /etc/lo-defaults ] && PW=$(cat /etc/lo-defaults)
+[ -n "$PW" ] && {
+	echo "root:$PW" | chpasswd 2>/dev/null || \
+		printf '%s\n%s\n' "$PW" "$PW" | passwd root >/dev/null 2>&1
+}
+
+uci -q set system.@system[0].hostname='LongOS'
+uci -q set system.@system[0].timezone='CST-8'
+uci -q set system.@system[0].zonename='Asia/Shanghai'
+uci -q commit system
+
+chmod 755 /usr/lib/longos/lo.sh /usr/lib/longos/monitor.sh /usr/sbin/longos \
+	/etc/accel-ppp/ip-up.sh /etc/accel-ppp/ip-down.sh 2>/dev/null
+
+/etc/init.d/longos enable 2>/dev/null
+/etc/init.d/longos restart 2>/dev/null
+
+rm -f /etc/uci-defaults/90-longos
+exit 0
