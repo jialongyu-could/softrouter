@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=accel-ppp
 PKG_VERSION:=1.14.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/accel-ppp/accel-ppp/archive/refs/tags/
@@ -51,6 +51,15 @@ CMAKE_OPTIONS += \
 	-DLOG_PGSQL=FALSE \
 	-DNETSNMP=FALSE \
 	-DCMAKE_INSTALL_PREFIX=/usr
+
+# accel-ppp 的 CMakeLists.txt 禁止源码内构建（in-source build），
+# 但 OpenWrt 默认在 PKG_BUILD_DIR 内同时做源码解压与编译。
+# 每次构建都会清理 build_dir，源码内构建无副作用，因此移除该检查。
+define Build/Prepare
+	$(call Build/Prepare/Default)
+	sed -i '/CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR/,/^[[:space:]]*endif()/d' \
+		$(PKG_BUILD_DIR)/CMakeLists.txt
+endef
 
 define Package/accel-ppp/install
 	$(INSTALL_DIR) $(1)/usr/sbin
