@@ -174,7 +174,10 @@ jobs:
           fi
           echo "输入镜像: $IMG_GZ"
           bash build/build-iso.sh "$IMG_GZ"
-          cp -f "${IMG_GZ%.img.gz}.iso" openwrt/bin/targets/x86/64/
+          # build-iso.sh 直接在输入镜像同目录生成 ISO，无需再次复制（同文件 cp 会报错退出）
+          ISO="${IMG_GZ%.img.gz}.iso"
+          [ -s "$ISO" ] || { echo "错误：ISO 未生成: $ISO"; exit 1; }
+          ls -lh "$ISO"
 
       - name: 生成 SHA256
         run: |
