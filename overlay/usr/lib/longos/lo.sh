@@ -179,22 +179,25 @@ ipv6_prefix_suggest() {
 # ---------------- PPPoE 在线会话（由 ip-up/ip-down 维护） ----------------
 
 pppoe_online_json() {
-	local files="" first=1 f user ifc lip rip ts up rx tx ip6 oldifs
+	local files="" first=1 f user ifc lip rip ts up rx tx ip6 ip6pd oldifs
 	mkdir -p "$RUNDIR"
 	for f in "$RUNDIR"/*; do
 		[ -f "$f" ] || continue
+		case "$f" in *.pd) continue ;; esac
 		oldifs="$IFS"
 		IFS='|'
 		read -r user ifc lip rip ts ip6 < "$f"
 		IFS="$oldifs"
 		[ -n "$ifc" ] || continue
-		if [ ! -d "/sys/class/net/$ifc" ]; then rm -f "$f"; continue; fi
+		if [ ! -d "/sys/class/net/$ifc" ]; then rm -f "$f" "$f.pd"; continue; fi
+		ip6pd=""
+		[ -f "$f.pd" ] && ip6pd=$(cat "$f.pd" 2>/dev/null)
 		up=$(( $(date +%s) - ${ts:-0} ))
 		set -- $(iface_rate "$ifc")
 		rx=$1; tx=$2
 		[ "$first" = 1 ] || files="$files,"
 		first=0
-		files="$files{\"user\":\"$(jesc "$user")\",\"iface\":\"$(jesc "$ifc")\",\"ip\":\"$(jesc "$rip")\",\"ipv6\":\"$(jesc "$ip6")\",\"local\":\"$(jesc "$lip")\",\"uptime\":$up,\"rx\":$(jnum "$rx"),\"tx\":$(jnum "$tx")}"
+		files="$files{\"user\":\"$(jesc "$user")\",\"iface\":\"$(jesc "$ifc")\",\"ip\":\"$(jesc "$rip")\",\"ipv6\":\"$(jesc "$ip6")\",\"ipv6pd\":\"$(jesc "$ip6pd")\",\"local\":\"$(jesc "$lip")\",\"uptime\":$up,\"rx\":$(jnum "$rx"),\"tx\":$(jnum "$tx")}"
 	done
 	printf '[%s]' "$files"
 }
@@ -540,7 +543,7 @@ gen_accelppp() {
 	config_get lcp_f pppoe lcp_failure '3'
 	config_get_bool v6 pppoe v6 1
 	config_get v6p pppoe v6_prefix ''
-	config_get v6link pppoe v6_link ''
+	config_get v6link pppoe v6_link 'fd00:1::/48'
 	config_get v6len pppoe v6_prefix_len '64'
 	# 前缀格式非法（必须含 ":" 和 "/"）时直接丢弃，避免写出坏配置
 	case "$v6p" in *:*/*) ;; *) v6p='' ;; esac
@@ -592,7 +595,6 @@ interface=$iface
 ac-name=$ac
 service-name=$svc
 called-sid=mac
-ip-pool=srv4
 verbose=1
 EOF
 		[ "$v6" = 1 ] && [ -n "$v6link" ] && echo "ipv6-pool=srv6"
@@ -636,6 +638,10 @@ EOF
 verbose=0
 AdvManagedFlag=0
 AdvOtherConfigFlag=1
+# 关键：加载 ipv6_dhcp 后 accel-ppp 默认 AdvAutonomousFlag=0，
+# 若不显式打开，拨号设备既不做 SLAAC 也不做有状态分配，等于拿不到地址
+AdvOnLinkFlag=1
+AdvAutonomousFlag=1
 EOF
 			if [ -n "$v6link" ] || [ -n "$v6p" ]; then
 				cat <<EOF
@@ -696,6 +702,10 @@ EOF
 		/etc/init.d/accel-ppp stop >/dev/null 2>&1
 		/etc/init.d/accel-ppp disable >/dev/null 2>&1
 	fi
+
+	# 同步 ppp 区域的 NAT/转发规则，否则拨号设备无法上网
+	gen_firewall 2>/dev/null
+	/etc/init.d/firewall reload >/dev/null 2>&1
 }
 
 # ---------------- 配置生成：防火墙（DMZ + 端口转发） ----------------
@@ -731,6 +741,38 @@ gen_firewall() {
 		done
 		uci set "firewall.$zone.masq=1"
 		uci set "firewall.$zone.mtu_fix=1"
+	fi
+
+	# PPPoE 服务端：ppp 接口必须纳入独立区域并做 NAT，否则拨号设备无法上网
+	local ppp_en
+	config_get_bool ppp_en pppoe enabled 0
+	if [ "$ppp_en" = 1 ]; then
+		uci set firewall.lo_pppoe=zone
+		uci set firewall.lo_pppoe.name='pppoe'
+		uci set firewall.lo_pppoe.input='ACCEPT'
+		uci set firewall.lo_pppoe.output='ACCEPT'
+		uci set firewall.lo_pppoe.forward='ACCEPT'
+		uci set firewall.lo_pppoe.masq='1'
+		uci set firewall.lo_pppoe.mtu_fix='1'
+		uci -q delete firewall.lo_pppoe.device
+		uci add_list firewall.lo_pppoe.device='ppp+'
+
+		uci set firewall.lo_pppoe_fwd=forwarding
+		uci set firewall.lo_pppoe_fwd.src='pppoe'
+		uci set firewall.lo_pppoe_fwd.dest='wan'
+
+		uci set firewall.lo_pppoe_fwd_lan=forwarding
+		uci set firewall.lo_pppoe_fwd_lan.src='lan'
+		uci set firewall.lo_pppoe_fwd_lan.dest='pppoe'
+
+		# PCDN 等场景需要外网 IPv6 主动回连拨号设备
+		uci set firewall.lo_pppoe_v6=rule
+		uci set firewall.lo_pppoe_v6.name='LongOS-PPPoE-IPv6'
+		uci set firewall.lo_pppoe_v6.src='wan'
+		uci set firewall.lo_pppoe_v6.dest='pppoe'
+		uci set firewall.lo_pppoe_v6.family='ipv6'
+		uci set firewall.lo_pppoe_v6.proto='all'
+		uci set firewall.lo_pppoe_v6.target='ACCEPT'
 	fi
 
 	config_get_bool dmz_en settings dmz_enable 0
@@ -1051,6 +1093,8 @@ save_pppoe() {
 	ps=$(json_get '.pool_start')
 	pe=$(json_get '.pool_end')
 	v6=$(json_get '.v6')
+	# 未显式关闭时默认开启 IPv6，保证每个拨号设备都能拿到 IPv6
+	[ -n "$v6" ] || v6=true
 	v6p=$(json_get '.v6_prefix')
 	v6link=$(json_get '.v6_link')
 	v6len=$(json_get '.v6_prefix_len')
@@ -1072,7 +1116,7 @@ save_pppoe() {
 	uci set "$SR.pppoe.pool_start=${ps:-192.168.200.100}"
 	uci set "$SR.pppoe.pool_end=${pe:-192.168.200.200}"
 	uci set "$SR.pppoe.v6=$([ "$v6" = "true" ] && echo 1 || echo 0)"
-	uci set "$SR.pppoe.v6_link=$v6link"
+	uci set "$SR.pppoe.v6_link=${v6link:-fd00:1::/48}"
 	uci set "$SR.pppoe.v6_prefix=$v6p"
 	uci set "$SR.pppoe.v6_prefix_len=${v6len:-64}"
 	uci set "$SR.pppoe.maxsessions=${maxs:-200}"
@@ -1497,7 +1541,7 @@ cmd_pppoe() {
 	config_get pe pppoe pool_end '192.168.200.200'
 	config_get_bool v6 pppoe v6 1
 	config_get v6p pppoe v6_prefix ''
-	config_get v6link pppoe v6_link ''
+	config_get v6link pppoe v6_link 'fd00:1::/48'
 	config_get v6len pppoe v6_prefix_len '64'
 	config_get maxs pppoe maxsessions '200'
 	config_get dns1 pppoe dns1 '223.5.5.5'

@@ -32,6 +32,10 @@ CONFIG_PACKAGE_luci-i18n-nlbwmon-zh-cn=y
 # 网络基础
 CONFIG_PACKAGE_dnsmasq=y
 CONFIG_PACKAGE_odhcpd-ipv6only=y
+# IPv6：PPPoE 服务端要拨号设备拿到 IPv6，本机也需要完整 IPv6 客户端/路由能力
+CONFIG_PACKAGE_odhcp6c=y
+CONFIG_PACKAGE_ipv6helper=y
+CONFIG_PACKAGE_kmod-ipv6=y
 CONFIG_PACKAGE_firewall4=y
 CONFIG_PACKAGE_ppp=y
 CONFIG_PACKAGE_ppp-mod-pppoe=y

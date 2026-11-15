@@ -45,7 +45,7 @@ config pppoe 'pppoe'
 	option lcp_interval '20'
 	option lcp_failure '3'
 	option v6 '1'
-	option v6_link ''
+	option v6_link 'fd00:1::/48'
 	option v6_prefix ''
 	option v6_prefix_len '64'
 
