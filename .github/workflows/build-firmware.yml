@@ -109,8 +109,20 @@ jobs:
 
       - name: 克隆 OpenWrt ${{ env.OPENWRT_VERSION }}
         run: |
-          git clone --depth 1 -b "$OPENWRT_VERSION" \
-            https://github.com/openwrt/openwrt.git openwrt
+          # 缓存步骤恢复 openwrt/dl 时会先创建 openwrt/ 目录，
+          # 此时 git clone 到 openwrt 会因“目标非空”报错退出 128。
+          # 先克隆到临时目录，再合并进 openwrt/，保留已缓存的 dl。
+          if [ -d openwrt ] && [ -n "$(ls -A openwrt)" ]; then
+            echo "==> openwrt 目录已存在（缓存 dl），合并克隆"
+            git clone --depth 1 -b "$OPENWRT_VERSION" \
+              https://github.com/openwrt/openwrt.git "$RUNNER_TEMP/openwrt-src"
+            rsync -a "$RUNNER_TEMP/openwrt-src/" openwrt/
+            rm -rf "$RUNNER_TEMP/openwrt-src"
+          else
+            rm -rf openwrt
+            git clone --depth 1 -b "$OPENWRT_VERSION" \
+              https://github.com/openwrt/openwrt.git openwrt
+          fi
           cd openwrt
           git log -1 --oneline
 
