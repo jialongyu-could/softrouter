@@ -1,0 +1,199 @@
+{#
+ LongOS 登录页（爱快风格）
+ 覆盖 luci-theme-bootstrap 自带的 sysauth.ut：
+   - 不再加载 bootstrap.sysauth 的 JS 弹窗视图，改为独立整页布局
+   - 认证仍由 dispatcher 处理，POST 字段固定为 luci_username / luci_password
+   - fuser 非空表示上一次登录失败
+-#}
+
+{%
+	http.prepare_content('text/html; charset=UTF-8');
+-%}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LongOS 智能路由管理系统</title>
+<style>
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body {
+		font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+		background: #f2f6fc;
+		color: #1f2d3d;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		position: relative;
+		overflow: hidden;
+	}
+	body::before, body::after {
+		content: "";
+		position: fixed;
+		border-radius: 50%;
+		filter: blur(40px);
+		pointer-events: none;
+	}
+	body::before {
+		width: 620px; height: 620px; left: -220px; top: -240px;
+		background: rgba(22, 119, 255, 0.16);
+	}
+	body::after {
+		width: 520px; height: 520px; right: -200px; bottom: -220px;
+		background: rgba(56, 189, 248, 0.14);
+	}
+	.login-wrap {
+		position: relative;
+		z-index: 1;
+		width: 100%;
+		max-width: 420px;
+		padding: 24px 16px;
+	}
+	.card {
+		background: #fff;
+		border-radius: 16px;
+		padding: 40px 36px 32px;
+		box-shadow: 0 18px 50px rgba(21, 62, 128, 0.12), 0 2px 8px rgba(21, 62, 128, 0.06);
+	}
+	.brand {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		margin-bottom: 30px;
+	}
+	.mark {
+		width: 52px; height: 52px;
+		border-radius: 14px;
+		background: linear-gradient(135deg, #1677ff, #4aa3ff);
+		color: #fff;
+		font-size: 26px;
+		font-weight: 700;
+		line-height: 52px;
+		text-align: center;
+		box-shadow: 0 8px 20px rgba(22, 119, 255, 0.32);
+	}
+	.brand h1 {
+		margin: 0;
+		font-size: 26px;
+		letter-spacing: 0.5px;
+		font-weight: 700;
+	}
+	.brand p {
+		margin: 4px 0 0;
+		font-size: 13px;
+		color: #8a94a6;
+		letter-spacing: 1px;
+	}
+	.err {
+		margin-bottom: 18px;
+		padding: 10px 14px;
+		border-radius: 9px;
+		font-size: 13px;
+		color: #cf1322;
+		background: #fff1f0;
+		border: 1px solid #ffccc7;
+	}
+	.field {
+		display: flex;
+		align-items: center;
+		height: 48px;
+		margin-bottom: 16px;
+		padding: 0 14px;
+		border: 1px solid #dde5f0;
+		border-radius: 10px;
+		background: #fafcff;
+		transition: border-color .15s, box-shadow .15s, background .15s;
+	}
+	.field:focus-within {
+		border-color: #1677ff;
+		background: #fff;
+		box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+	}
+	.field svg {
+		width: 18px; height: 18px;
+		margin-right: 10px;
+		flex: 0 0 18px;
+		fill: #9aa7bd;
+	}
+	.field input {
+		flex: 1;
+		min-width: 0;
+		border: 0;
+		outline: 0;
+		background: transparent;
+		font-size: 15px;
+		color: #1f2d3d;
+	}
+	.field input::placeholder { color: #b3bccb; }
+	.btn {
+		width: 100%;
+		height: 48px;
+		margin-top: 8px;
+		border: 0;
+		border-radius: 10px;
+		background: linear-gradient(90deg, #1677ff, #3f8cff);
+		color: #fff;
+		font-size: 16px;
+		letter-spacing: 6px;
+		text-indent: 6px;
+		cursor: pointer;
+		transition: box-shadow .15s, transform .05s, filter .15s;
+	}
+	.btn:hover { filter: brightness(1.05); box-shadow: 0 10px 24px rgba(22, 119, 255, 0.32); }
+	.btn:active { transform: translateY(1px); }
+	.tip {
+		margin: 20px 0 0;
+		font-size: 12px;
+		line-height: 1.7;
+		color: #9aa7bd;
+		text-align: center;
+	}
+	.foot {
+		margin-top: 22px;
+		text-align: center;
+		font-size: 12px;
+		color: #a9b3c4;
+	}
+	@media (max-width: 420px) {
+		.card { padding: 30px 22px 24px; }
+		.brand h1 { font-size: 22px; }
+	}
+</style>
+</head>
+<body>
+	<div class="login-wrap">
+		<section class="card">
+			<div class="brand">
+				<div class="mark">L</div>
+				<div>
+					<h1>LongOS</h1>
+					<p>智能路由管理系统</p>
+				</div>
+			</div>
+
+			{% if (fuser != null && fuser != ''): %}
+			<div class="err">用户名或密码错误，请重新输入</div>
+			{% endif %}
+
+			<form method="post" autocomplete="on">
+				<label class="field">
+					<svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>
+					<input name="luci_username" id="luci_username" type="text"
+						placeholder="请输入用户名" value="{{ entityencode(duser, true) }}"
+						autocomplete="username" autofocus>
+				</label>
+				<label class="field">
+					<svg viewBox="0 0 24 24"><path d="M17 9V7a5 5 0 0 0-10 0v2H5v12h14V9h-2zM9 7a3 3 0 0 1 6 0v2H9V7zm3 11a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg>
+					<input name="luci_password" id="luci_password" type="password"
+						placeholder="请输入密码" autocomplete="current-password">
+				</label>
+				<button type="submit" class="btn">登 录</button>
+			</form>
+
+			<p class="tip">默认账号 root，初始密码 admin，登录后请及时修改</p>
+		</section>
+		<div class="foot">LongOS · 基于 OpenWrt 构建</div>
+	</div>
+</body>
+</html>

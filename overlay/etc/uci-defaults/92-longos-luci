@@ -1,0 +1,16 @@
+#!/bin/sh
+# LuCI 默认语言与品牌：首启把管理界面设为简体中文（保留用户后续手动切换的结果）
+
+[ -n "$(uci -q get luci.main.lang)" ] || {
+	uci -q set luci.main.lang='zh-cn'
+	uci -q commit luci
+}
+
+# 顶部品牌取自主机名，这里再兜一层，避免从旧版本升级时沿用 SoftRouter
+[ "$(uci -q get system.@system[0].hostname)" = "LongOS" ] || {
+	uci -q set system.@system[0].hostname='LongOS'
+	uci -q commit system
+}
+
+rm -f /etc/uci-defaults/92-longos-luci
+exit 0
