@@ -179,6 +179,15 @@ jobs:
           echo "==> accel-ppp 软件包"
           ls -lh openwrt/bin/packages/x86_64/base/accel-ppp*.ipk 2>/dev/null || true
 
+      - name: 清理 img.gz 尾部填充
+        run: |
+          # OpenWrt 生成的 .img.gz 末尾带 512B 对齐填充，gunzip/zcat 解压完会报
+          # “trailing garbage ignored” 并以退出码 2 结束，部分面板/工具会误判为解压失败。
+          # 这里重新压成干净的 gzip，保证 zcat 返回 0。
+          for f in openwrt/bin/targets/x86/64/*combined*.img.gz; do
+            python3 -c 'import sys,zlib,gzip; p=sys.argv[1]; raw=open(p,"rb").read(); d=zlib.decompressobj(31); payload=d.decompress(raw)+d.flush(); open(p,"wb").write(gzip.compress(payload,9,mtime=0)); print(p, "->", len(payload))' "$f"
+          done
+
       - name: 打包 ISO（BIOS/SeaBIOS）
         run: |
           # memdisk 走传统 BIOS 引导，优先使用非 EFI 的 squashfs combined 镜像（MBR 引导）
