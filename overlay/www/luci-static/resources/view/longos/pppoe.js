@@ -66,7 +66,7 @@ return view.extend({
 				api.field('启用 PPPoE 服务端', api.switchBox(!!d.enabled, 'enabled'))
 			]),
 			E('div', { 'class': 'lo-two' }, [
-				api.field('IPv6 链路前缀（/64，可留空）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': 'fd00:1::/64' }), '留空即可；填 PD 池内的前缀会与委派前缀重叠'),
+				api.field('IPv6 链路前缀（留空即 fd00:1::/48）', api.input({ 'data-f': 'v6_link', 'value': d.v6_link || '', 'placeholder': 'fd00:1::/48' }), '每个拨号会话分到其中一个 /64，设备靠 RA/SLAAC 自动获得地址；不要与下方委派池重叠'),
 				api.field('IPv6 委派池（PD）', api.input({ 'data-f': 'v6_prefix', 'value': d.v6_prefix || '', 'placeholder': '2408:8207:1234::/56' }), '优先从 WAN 自动检测，可手动改')
 			]),
 			E('div', { 'class': 'lo-two' }, [
@@ -133,7 +133,8 @@ return view.extend({
 			dns1: v(box, 'dns1'), dns2: v(box, 'dns2'), mtu: v(box, 'mtu'),
 			maxsessions: v(box, 'maxsessions'), lcp_interval: v(box, 'lcp_interval'),
 			lcp_failure: v(box, 'lcp_failure'), v6: cb(box, 'v6'),
-			v6_link: v(box, 'v6_link'), v6_prefix: v(box, 'v6_prefix')
+			v6_link: v(box, 'v6_link'), v6_prefix: v(box, 'v6_prefix'),
+			v6_prefix_len: v(box, 'v6_prefix_len')
 		}).then(function() {
 			api.notify('PPPoE 服务端配置已应用', 'info');
 			window.setTimeout(function() { location.reload(); }, 800);

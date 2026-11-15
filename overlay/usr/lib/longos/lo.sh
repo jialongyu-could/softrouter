@@ -548,6 +548,8 @@ gen_accelppp() {
 	# 前缀格式非法（必须含 ":" 和 "/"）时直接丢弃，避免写出坏配置
 	case "$v6p" in *:*/*) ;; *) v6p='' ;; esac
 	case "$v6link" in *:*/*) ;; *) v6link='' ;; esac
+	# 链路前缀为空时回落到 ULA 默认值：否则设备只有 PD 没有地址
+	[ -n "$v6link" ] || v6link='fd00:1::/48'
 	# 委派长度必须为数字且不小于 PD 池掩码；相等时整池只能服务 1 个客户端
 	case "$v6len" in ''|*[!0-9]*) v6len=64 ;; esac
 	plen=64
@@ -589,6 +591,9 @@ $mods
 log-error=/var/log/accel-ppp/core.log
 log-info=/var/log/accel-ppp/info.log
 thread-count=2
+
+[cli]
+tcp=127.0.0.1:2001
 
 [pppoe]
 interface=$iface
