@@ -167,7 +167,11 @@ jobs:
 
       - name: 打包 ISO（BIOS/SeaBIOS）
         run: |
-          IMG_GZ="$(ls openwrt/bin/targets/x86/64/*combined*.img.gz | head -1)"
+          # memdisk 走传统 BIOS 引导，优先使用非 EFI 的 squashfs combined 镜像（MBR 引导）
+          IMG_GZ="$(ls openwrt/bin/targets/x86/64/*squashfs-combined.img.gz 2>/dev/null | head -1)"
+          if [ -z "$IMG_GZ" ]; then
+            IMG_GZ="$(ls openwrt/bin/targets/x86/64/*combined*.img.gz | head -1)"
+          fi
           echo "输入镜像: $IMG_GZ"
           bash build/build-iso.sh "$IMG_GZ"
           cp -f "${IMG_GZ%.img.gz}.iso" openwrt/bin/targets/x86/64/
