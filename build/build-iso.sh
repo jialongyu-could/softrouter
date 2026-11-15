@@ -20,7 +20,17 @@ MEMDISK=/usr/lib/syslinux/memdisk
 IMG="${IMG_GZ%.gz}"
 if [ ! -f "$IMG" ]; then
 	echo "==> 解压镜像"
-	gzip -dc "$IMG_GZ" > "$IMG"
+	# OpenWrt 生成的 .img.gz 尾部带有附加数据，gzip 会以退出码 2 提示
+	# “trailing garbage ignored”，但解压内容完整，属于可忽略的告警；
+	# 退出码 1 才是真正的解压失败。
+	rc=0
+	gzip -dc "$IMG_GZ" > "$IMG" || rc=$?
+	if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+		echo "错误：解压镜像失败（gzip rc=$rc）"
+		rm -f "$IMG"
+		exit 1
+	fi
+	[ -s "$IMG" ] || { echo "错误：解压后的镜像为空"; rm -f "$IMG"; exit 1; }
 fi
 
 WORK="$(mktemp -d)"
