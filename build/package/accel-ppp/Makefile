@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=accel-ppp
 PKG_VERSION:=1.14.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 PKG_SOURCE:=$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/accel-ppp/accel-ppp/archive/refs/tags/
@@ -26,7 +26,7 @@ include $(INCLUDE_DIR)/cmake.mk
 define Package/accel-ppp
   SECTION:=net
   CATEGORY:=Network
-  DEPENDS:=+kmod-pppoe +kmod-pppox +libpcre2 +libucontext +libopenssl +libpthread +librt +libatomic +libtriton
+  DEPENDS:=+kmod-pppoe +kmod-pppox +libpcre2 +libucontext +libopenssl +libpthread +librt +libatomic
   TITLE:=High performance PPPoE/PPTP/L2TP/SSTP/IPoE server
   URL:=https://accel-ppp.org
 endef
@@ -65,18 +65,6 @@ define Build/Prepare
 		$(PKG_BUILD_DIR)/CMakeLists.txt
 endef
 
-define Package/libtriton
-  SECTION:=libs
-  CATEGORY:=Libraries
-  TITLE:=triton runtime library required by accel-ppp
-  URL:=https://accel-ppp.org
-endef
-
-define Package/libtriton/description
-  accel-ppp 自带的 triton 基础库（libtriton.so），
-  提供事件循环、内存池等运行时接口，被 accel-ppp 主程序与各模块动态链接。
-endef
-
 define Package/accel-ppp/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_DIR) $(1)/etc/init.d
@@ -85,18 +73,13 @@ define Package/accel-ppp/install
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/accel-pppd $(1)/usr/sbin/accel-ppp
 	[ -f $(PKG_INSTALL_DIR)/usr/sbin/accel-cmd ] && \
 		$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/accel-cmd $(1)/usr/sbin/ || true
-	# 运行期模块（pppoe/ipoe/radius 等）由 accel-pppd 从 /usr/lib/accel-ppp 动态加载；
-	# libtriton.so 由独立的 libtriton 包提供，此处排除避免文件冲突。
-	$(INSTALL_BIN) $$(find $(PKG_INSTALL_DIR)/usr/lib/accel-ppp -maxdepth 1 -name '*.so' ! -name 'libtriton.so') $(1)/usr/lib/accel-ppp/
+	# 运行期模块（pppoe/ipoe/radius 等）与 libtriton.so 均由 accel-pppd 从
+	# /usr/lib/accel-ppp 动态加载/链接，统一打入 accel-ppp 包内，
+	# 避免拆分为独立 libtriton 包时跨包依赖无法被 defconfig 自动选中。
+	$(INSTALL_BIN) $$(find $(PKG_INSTALL_DIR)/usr/lib/accel-ppp -maxdepth 1 -name '*.so') $(1)/usr/lib/accel-ppp/
 	$(INSTALL_BIN) ./files/accel-ppp.init $(1)/etc/init.d/accel-ppp
 	$(INSTALL_CONF) ./files/accel-ppp.conf $(1)/etc/accel-ppp/accel-ppp.conf
 	$(INSTALL_CONF) ./files/accel-ppp.conf $(1)/etc/accel-ppp.conf
 endef
 
-define Package/libtriton/install
-	$(INSTALL_DIR) $(1)/usr/lib/accel-ppp
-	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/lib/accel-ppp/libtriton.so $(1)/usr/lib/accel-ppp/libtriton.so
-endef
-
-$(eval $(call BuildPackage,libtriton))
 $(eval $(call BuildPackage,accel-ppp))
