@@ -280,10 +280,20 @@ jobs:
           } > "$STAGE/CONTROL/postinst"
           chmod 755 "$STAGE/CONTROL/postinst" "$STAGE/usr/lib/longos/"*.sh "$STAGE/etc/init.d/"* "$STAGE/etc/accel-ppp/"*.sh
           chmod 755 "$STAGE/www/cgi-bin/"*
+          # ipkg-build 内部会 cd 到 $STAGE，目标目录必须用绝对路径，
+          # 否则相对路径 dist 会被解析到 $STAGE 下导致 "Directory nonexistent"。
+          # 其 tar 使用 --numeric-owner，需 fakeroot 让包内文件归属 root:root。
+          DIST_DIR="$(pwd)/dist"
+          FAKEROOT=""
+          if [ -x openwrt/staging_dir/host/bin/fakeroot ]; then
+            FAKEROOT="openwrt/staging_dir/host/bin/fakeroot"
+          elif command -v fakeroot >/dev/null 2>&1; then
+            FAKEROOT="fakeroot"
+          fi
           if [ -x openwrt/scripts/ipkg-build ]; then
-            openwrt/scripts/ipkg-build "$STAGE" dist
+            $FAKEROOT openwrt/scripts/ipkg-build "$STAGE" "$DIST_DIR"
           elif [ -x openwrt/staging_dir/host/bin/ipkg-build ]; then
-            openwrt/staging_dir/host/bin/ipkg-build "$STAGE" dist
+            $FAKEROOT openwrt/staging_dir/host/bin/ipkg-build "$STAGE" "$DIST_DIR"
           else
             echo "警告：未找到 ipkg-build，跳过增量升级包"
           fi
