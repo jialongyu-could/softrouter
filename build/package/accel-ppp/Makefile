@@ -7,7 +7,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=accel-ppp
 PKG_VERSION:=1.14.0
-PKG_RELEASE:=6
+PKG_RELEASE:=7
 
 PKG_SOURCE:=$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/accel-ppp/accel-ppp/archive/refs/tags/
@@ -76,7 +76,7 @@ define Package/accel-ppp/install
 	# 运行期模块（pppoe/ipoe/radius 等）与 libtriton.so 均由 accel-pppd 从
 	# /usr/lib/accel-ppp 动态加载/链接，统一打入 accel-ppp 包内，
 	# 避免拆分为独立 libtriton 包时跨包依赖无法被 defconfig 自动选中。
-	$(INSTALL_BIN) $$(find $(PKG_INSTALL_DIR)/usr/lib/accel-ppp -maxdepth 1 -name '*.so') $(1)/usr/lib/accel-ppp/
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/accel-ppp/. $(1)/usr/lib/accel-ppp/
 	$(INSTALL_BIN) ./files/accel-ppp.init $(1)/etc/init.d/accel-ppp
 	$(INSTALL_CONF) ./files/accel-ppp.conf $(1)/etc/accel-ppp/accel-ppp.conf
 	$(INSTALL_CONF) ./files/accel-ppp.conf $(1)/etc/accel-ppp.conf
