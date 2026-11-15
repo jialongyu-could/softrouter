@@ -1344,6 +1344,41 @@ save_password() {
 	printf '{"ok":true}'
 }
 
+# 绑定远程 Agent：绑定密钥由网站管理后台生成，一次性换取 device_id + token
+agent_bind() {
+	local key server res
+	key=$(json_get '.key')
+	server=$(json_get '.server')
+	[ -n "$key" ] || { printf '{"ok":false,"msg":"请输入绑定密钥"}'; return; }
+	[ -n "$server" ] || server=$(uci -q get longos-agent.agent.server)
+	[ -n "$server" ] || { printf '{"ok":false,"msg":"服务器地址不能为空"}'; return; }
+	case "$server" in
+		https://*) ;;
+		*) printf '{"ok":false,"msg":"服务器地址必须为 https"}'; return ;;
+	esac
+	uci set longos-agent.agent.server="$server"
+	uci set longos-agent.agent.bind_key="$key"
+	uci set longos-agent.agent.enabled=1
+	uci commit longos-agent
+	res=$(/usr/sbin/longos-agent bind)
+	printf '%s' "$res"
+	/etc/init.d/longos-agent restart >/dev/null 2>&1
+}
+
+# 解绑：清除本机凭证并拆除 WireGuard 通道（服务器侧设备记录由后台删除）
+agent_unbind() {
+	uci -q delete longos-agent.agent.token
+	uci -q delete longos-agent.agent.device_id
+	uci -q delete longos-agent.agent.bind_key
+	uci -q commit longos-agent
+	rm -f /etc/longos/wg.json /etc/longos/frp.json /etc/longos/users.json
+	uci -q delete network.lo_wg
+	uci -q delete network.lo_wg_srv
+	uci -q commit network
+	ifdown lo_wg >/dev/null 2>&1
+	printf '{"ok":true}'
+}
+
 save_trea() {
 	local en server token iface interval extra
 	en=$(json_get '.enabled')
@@ -1728,6 +1763,18 @@ toggle_wan() {
 # ---------------- 入口 ----------------
 
 cmd="$1"
+
+# 默认密码未修改期间，除改密相关命令外一律拒绝（面板后端强制锁定）
+case "$cmd" in
+	auth_state|auth_change) ;;
+	*)
+		if [ -s /etc/longos/pwchange ]; then
+			printf '{"ok":false,"must_change":true,"msg":"检测到默认密码未修改，请先完成密码修改"}'
+			exit 0
+		fi
+		;;
+esac
+
 if [ "$cmd" = "apply" ]; then
 	apply_all
 	printf '{"ok":true}'
@@ -1775,6 +1822,12 @@ case "$cmd" in
 	password_save) save_password ;;
 	trea_save) save_trea ;;
 	trea_action) trea_action ;;
+	auth_state) /usr/lib/longos/lo-auth.sh state ;;
+	auth_change) /usr/lib/longos/lo-auth.sh change "$INPUT" ;;
+	agent_state) /usr/sbin/longos-agent state ;;
+	agent_bind) agent_bind ;;
+	agent_unbind) agent_unbind ;;
+	agent_users) cat /etc/longos/users.json 2>/dev/null || printf '{"users":[]}' ;;
 	reboot) (sleep 1; reboot) >/dev/null 2>&1 & printf '{"ok":true}' ;;
 	*) printf '{"ok":false,"msg":"unknown command: %s"}' "$(jesc "$cmd")" ;;
 esac

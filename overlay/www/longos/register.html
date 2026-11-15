@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>注册 LongOS 账号</title>
+<style>
+	* { box-sizing: border-box; }
+	html, body { min-height: 100%; margin: 0; }
+	body {
+		font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+		background: linear-gradient(135deg, #eef5fc 0%, #f6fafe 45%, #e9f2fb 100%);
+		color: #333;
+		display: flex; align-items: center; justify-content: center;
+		padding: 24px 0;
+	}
+	.card {
+		width: 460px; max-width: calc(100vw - 32px);
+		padding: 30px 30px 24px;
+		border-radius: 12px;
+		background: rgba(255,255,255,.7);
+		backdrop-filter: blur(18px);
+		box-shadow: 0 2px 20px rgba(0,0,0,.05);
+	}
+	.logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; }
+	.logo .mark {
+		width: 34px; height: 34px; border-radius: 9px;
+		background: linear-gradient(135deg,#1677ff,#4c9dff);
+		color: #fff; font-size: 19px; font-weight: 700; line-height: 34px; text-align: center;
+	}
+	.logo .word { font-size: 26px; font-weight: 800; color: #1677ff; letter-spacing: .5px; }
+	h1 { margin: 0 0 6px; font-size: 17px; text-align: center; }
+	.sub { margin: 0 0 18px; font-size: 12px; color: #8d97a6; text-align: center; line-height: 1.7; }
+	.err { display: none; margin: 0 0 14px; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #d4380d; background: #fff2e8; border: 1px solid #ffd8bf; }
+	.okmsg { display: none; margin: 0 0 14px; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #389e0d; background: #f6ffed; border: 1px solid #b7eb8f; }
+	.field { margin-bottom: 13px; }
+	.field label { display: block; margin-bottom: 6px; font-size: 12px; color: #5b6675; }
+	.field input {
+		width: 100%; height: 40px; padding: 0 12px;
+		border: 1px solid #e3e9f2; border-radius: 6px; background: #fff;
+		font-size: 14px; color: #333; outline: 0;
+	}
+	.field input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,.12); }
+	.rules { margin: 4px 0 16px; padding: 10px 12px; border-radius: 6px; background: rgba(22,119,255,.04); border: 1px solid rgba(22,119,255,.12); font-size: 12px; line-height: 1.9; color: #5b6675; }
+	.rules li { list-style: none; position: relative; padding-left: 18px; }
+	.rules li::before { content: "○"; position: absolute; left: 2px; color: #b6c0cd; }
+	.rules li.ok::before { content: "●"; color: #52c41a; }
+	.rules li.ok { color: #389e0d; }
+	.btn { width: 100%; height: 40px; border: 0; border-radius: 6px; background: #1677ff; color: #fff; font-size: 15px; letter-spacing: 2px; cursor: pointer; }
+	.btn:hover { background: #0f66e0; }
+	.btn[disabled] { background: #a9c9f5; cursor: not-allowed; }
+	.btn.ghost { background: #fff; color: #1677ff; border: 1px solid #b8d4fb; margin-top: 10px; }
+	.row2 { display: flex; gap: 10px; }
+	.row2 > * { flex: 1; }
+	.foot { margin-top: 14px; text-align: center; font-size: 11px; color: #a9b3c1; }
+	.foot a { color: #1677ff; text-decoration: none; }
+	.hidden { display: none !important; }
+	.card h3 { margin: 0 0 8px; font-size: 16px; text-align: center; }
+</style>
+</head>
+<body>
+<form class="card" id="regForm" autocomplete="off">
+	<div class="logo"><span class="mark">L</span><span class="word">LongOS</span></div>
+
+	<!-- 第一步：填写注册信息 -->
+	<div id="step1">
+		<h1>注册 LongOS 账号</h1>
+		<p class="sub">账号将同步到 LongOS 软路由的用户列表，可在管理后台绑定设备并分配权限</p>
+		<div class="err" id="err1"></div>
+		<div class="field"><label for="username">用户名</label><input id="username" placeholder="3~32 位字母、数字或下划线" autocomplete="username"></div>
+		<div class="field"><label for="email">邮箱</label><input id="email" type="email" placeholder="用于接收激活码" autocomplete="email"></div>
+		<div class="field"><label for="phone">手机号（选填）</label><input id="phone" placeholder="用于联系，可留空"></div>
+		<div class="field"><label for="password">密码</label><input id="password" type="password" autocomplete="new-password" placeholder="至少 10 位"></div>
+		<div class="field"><label for="confirm">确认密码</label><input id="confirm" type="password" autocomplete="new-password" placeholder="再次输入密码"></div>
+		<ul class="rules" id="rules">
+			<li data-rule="len">长度 <b>10 ~ 64</b> 位</li>
+			<li data-rule="cls">大写、小写、数字、符号中至少 <b>3 类</b></li>
+			<li data-rule="space">不含空格等空白字符</li>
+			<li data-rule="user">不含用户名</li>
+			<li data-rule="same">两次输入一致</li>
+		</ul>
+		<button type="submit" class="btn" id="btn1">注 册</button>
+		<p class="foot"><a href="/cgi-bin/luci/">返回登录</a></p>
+	</div>
+
+	<!-- 第二步：账号激活 -->
+	<div id="step2" class="hidden">
+		<h1>激活账号</h1>
+		<p class="sub">激活码已发送至 <b id="mailOut"></b>，30 分钟内有效<br>若未收到，可联系管理员在后台查看或重新发送</p>
+		<div class="err" id="err2"></div>
+		<div class="okmsg" id="ok2"></div>
+		<div class="field"><label for="code">激活码</label><input id="code" maxlength="12" placeholder="请输入 6 位激活码"></div>
+		<button type="submit" class="btn" id="btn2">激 活</button>
+		<button type="button" class="btn ghost" id="resend">重新发送激活码</button>
+		<p class="foot"><a href="/cgi-bin/luci/">返回登录</a></p>
+	</div>
+
+	<!-- 第三步：完成 -->
+	<div id="step3" class="hidden" style="text-align:center;padding:12px 0">
+		<h3>注册成功</h3>
+		<p class="sub">账号已激活，可使用该账号登录管理后台并绑定软路由设备</p>
+		<p class="foot"><a href="/cgi-bin/luci/">进入登录页</a></p>
+	</div>
+</form>
+
+<script>
+(function() {
+	var $ = function(id) { return document.getElementById(id); };
+	var MIN = 10, MAX = 64, regUser = '', regMail = '';
+
+	function post(action, data) {
+		return new Promise(function(resolve) {
+			var xhr = new XMLHttpRequest();
+			xhr.open('POST', '/cgi-bin/longos-reg', true);
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.timeout = 20000;
+			xhr.onload = function() {
+				var d = {};
+				try { d = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+				resolve(d || {});
+			};
+			xhr.onerror = xhr.ontimeout = function() { resolve({ ok: false, msg: '网络异常，请稍后重试' }); };
+			var payload = data || {};
+			payload.action = action;
+			xhr.send(JSON.stringify(payload));
+		});
+	}
+
+	function showErr(box, msg) {
+		box.textContent = msg || '';
+		box.style.display = msg ? 'block' : 'none';
+	}
+
+	function classes(pw) {
+		var c = 0;
+		if (/[a-z]/.test(pw)) c++;
+		if (/[A-Z]/.test(pw)) c++;
+		if (/[0-9]/.test(pw)) c++;
+		if (/[^a-zA-Z0-9]/.test(pw)) c++;
+		return c;
+	}
+
+	function check() {
+		var u = $('username').value, p = $('password').value, cf = $('confirm').value;
+		var r = {
+			len: p.length >= MIN && p.length <= MAX,
+			cls: classes(p) >= 3,
+			space: p.length > 0 && !/\s/.test(p),
+			user: p.length > 0 && u.length > 0 && p.toLowerCase().indexOf(u.toLowerCase()) < 0,
+			same: cf.length > 0 && p === cf
+		};
+		Object.keys(r).forEach(function(k) {
+			var li = $('rules').querySelector('[data-rule="' + k + '"]');
+			if (li) li.className = r[k] ? 'ok' : '';
+		});
+		return r;
+	}
+
+	['username', 'password', 'confirm'].forEach(function(id) {
+		$(id).addEventListener('input', function() { showErr($('err1'), ''); check(); });
+	});
+
+	$('regForm').addEventListener('submit', function(ev) {
+		ev.preventDefault();
+		if (!$('step1').classList.contains('hidden')) return doRegister();
+		if (!$('step2').classList.contains('hidden')) return doActivate();
+	});
+
+	function doRegister() {
+		var r = check();
+		var u = $('username').value.trim(), mail = $('email').value.trim();
+		if (!/^[A-Za-z0-9_]{3,32}$/.test(u)) { showErr($('err1'), '用户名需为 3~32 位字母、数字或下划线'); return; }
+		if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { showErr($('err1'), '请输入正确的邮箱地址'); return; }
+		for (var k in r) {
+			if (!r[k]) {
+				showErr($('err1'), k === 'len' ? '密码长度需为 ' + MIN + ' ~ ' + MAX + ' 位'
+					: k === 'cls' ? '密码需包含大写、小写、数字、符号中至少 3 类'
+					: k === 'space' ? '密码不能包含空格等空白字符'
+					: k === 'user' ? '密码不能包含用户名'
+					: '两次输入的密码不一致');
+				return;
+			}
+		}
+		$('btn1').disabled = true;
+		$('btn1').textContent = '提交中…';
+		post('register', {
+			username: u, email: mail, phone: $('phone').value.trim(),
+			password: $('password').value, confirm: $('confirm').value
+		}).then(function(d) {
+			$('btn1').disabled = false;
+			$('btn1').textContent = '注 册';
+			if (!d.ok) { showErr($('err1'), d.msg || d.error || '注册失败'); return; }
+			regUser = u;
+			regMail = mail;
+			$('mailOut').textContent = mail;
+			$('step1').classList.add('hidden');
+			$('step2').classList.remove('hidden');
+		});
+	}
+
+	function doActivate() {
+		var code = $('code').value.trim();
+		if (!code) { showErr($('err2'), '请输入激活码'); return; }
+		$('btn2').disabled = true;
+		$('btn2').textContent = '激活中…';
+		post('activate', { username: regUser, code: code }).then(function(d) {
+			$('btn2').disabled = false;
+			$('btn2').textContent = '激 活';
+			if (!d.ok) { showErr($('err2'), d.msg || d.error || '激活失败'); return; }
+			$('step2').classList.add('hidden');
+			$('step3').classList.remove('hidden');
+		});
+	}
+
+	$('resend').addEventListener('click', function() {
+		if (!regUser) return;
+		$('resend').disabled = true;
+		post('resend', { username: regUser }).then(function(d) {
+			$('resend').disabled = false;
+			showErr($('err2'), '');
+			$('ok2').textContent = d.ok ? '激活码已重新发送，请查收邮箱' : (d.msg || '发送失败，请联系管理员');
+			$('ok2').style.display = 'block';
+		});
+	});
+
+	check();
+})();
+</script>
+</body>
+</html>

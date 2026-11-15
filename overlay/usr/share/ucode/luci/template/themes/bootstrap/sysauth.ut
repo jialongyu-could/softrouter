@@ -92,6 +92,16 @@
 		background: #fff2e8;
 		border: 1px solid #ffd8bf;
 	}
+	.notice {
+		margin: -12px 0 16px;
+		padding: 8px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		line-height: 1.6;
+		color: #ad6800;
+		background: #fffbe6;
+		border: 1px solid #ffe58f;
+	}
 	.field {
 		position: relative;
 		margin-bottom: 14px;
@@ -217,6 +227,10 @@
 		<div class="err">用户名或密码错误，请重新输入</div>
 		{% endif %}
 
+		<div class="notice" id="pwNotice" style="display:none">
+			系统仍在使用默认密码，登录后将强制要求修改密码
+		</div>
+
 		<div class="field">
 			<svg viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4.42 0-8 2.24-8 5v1h16v-1c0-2.76-3.58-5-8-5z"/></svg>
 			<input name="luci_username" id="luci_username" type="text"
@@ -285,6 +299,23 @@
 		agree.onchange = function() {
 			if (agree.checked) { tip.textContent = ''; }
 		};
+
+		// 默认密码检测：提示登录后必须修改密码（改密页为公开入口，不依赖会话）
+		try {
+			var nx = new XMLHttpRequest();
+			nx.open('GET', '/cgi-bin/longos-auth?action=state&_=' + Date.now(), true);
+			nx.timeout = 4000;
+			nx.onload = function() {
+				try {
+					var s = JSON.parse(nx.responseText || '{}');
+					if (s && s.must_change) {
+						document.getElementById('pwNotice').style.display = 'block';
+						if (s.users && s.users[0] && !u.value) u.value = s.users[0];
+					}
+				} catch (e) {}
+			};
+			nx.send();
+		} catch (e) {}
 	})();
 	</script>
 </body>

@@ -27,7 +27,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装测试依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq
+
+      - name: Shell 语法检查
+        run: |
+          set -e
+          for f in overlay/usr/lib/longos/*.sh overlay/etc/uci-defaults/9* \
+                   overlay/www/cgi-bin/* tests/auth/*.sh; do
+            sh -n "$f"
+            echo "ok $f"
+          done
+
+      - name: 账号安全单元测试
+        run: sh tests/auth/test-lo-auth.sh
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 350
     env:
@@ -139,8 +163,13 @@ jobs:
           cp -a overlay openwrt/files
           chmod 755 openwrt/files/usr/lib/longos/lo.sh \
                     openwrt/files/usr/lib/longos/monitor.sh \
+                    openwrt/files/usr/lib/longos/lo-auth.sh \
                     openwrt/files/usr/sbin/longos \
+                    openwrt/files/usr/sbin/longos-agent \
+                    openwrt/files/www/cgi-bin/longos-auth \
+                    openwrt/files/www/cgi-bin/longos-reg \
                     openwrt/files/etc/init.d/longos \
+                    openwrt/files/etc/init.d/longos-agent \
                     openwrt/files/etc/init.d/longos-tuning \
                     openwrt/files/etc/init.d/trea \
                     openwrt/files/etc/uci-defaults/90-longos \
@@ -215,11 +244,16 @@ jobs:
           rm -rf "$STAGE" dist
           mkdir -p "$STAGE/CONTROL" "$STAGE/usr/lib" "$STAGE/usr/sbin" "$STAGE/usr/share/luci" \
                    "$STAGE/www/luci-static/resources/view" "$STAGE/etc/init.d" \
-                   "$STAGE/etc/accel-ppp" "$STAGE/etc/sysctl.d" dist
+                   "$STAGE/etc/accel-ppp" "$STAGE/etc/sysctl.d" \
+                   "$STAGE/www/cgi-bin" "$STAGE/www/longos" \
+                   "$STAGE/usr/share/ucode/luci/template" dist
           cp -a overlay/usr/lib/longos "$STAGE/usr/lib/"
           cp -a overlay/usr/sbin/. "$STAGE/usr/sbin/"
           cp -a overlay/www/luci-static/resources/longos "$STAGE/www/luci-static/resources/"
           cp -a overlay/www/luci-static/resources/view/longos "$STAGE/www/luci-static/resources/view/"
+          cp -a overlay/www/cgi-bin/. "$STAGE/www/cgi-bin/"
+          cp -a overlay/www/longos/. "$STAGE/www/longos/"
+          cp -a overlay/usr/share/ucode/luci/template/header.ut "$STAGE/usr/share/ucode/luci/template/"
           cp -a overlay/usr/share/luci/menu.d "$STAGE/usr/share/luci/"
           cp -a overlay/etc/init.d/. "$STAGE/etc/init.d/"
           cp -a overlay/etc/accel-ppp/. "$STAGE/etc/accel-ppp/"
@@ -238,15 +272,18 @@ jobs:
           } > "$STAGE/CONTROL/control"
           {
             echo '#!/bin/sh'
+            echo 'chmod 755 /www/cgi-bin/longos-auth /www/cgi-bin/longos-reg /usr/sbin/longos-agent /usr/lib/longos/lo-auth.sh 2>/dev/null'
             echo '[ -x /etc/init.d/longos ] && /etc/init.d/longos restart >/dev/null 2>&1'
             echo '[ -x /etc/init.d/longos-tuning ] && /etc/init.d/longos-tuning restart >/dev/null 2>&1'
+            echo '[ -x /etc/init.d/longos-agent ] && { /etc/init.d/longos-agent enable 2>/dev/null; /etc/init.d/longos-agent restart 2>/dev/null; }'
             echo 'exit 0'
           } > "$STAGE/CONTROL/postinst"
           chmod 755 "$STAGE/CONTROL/postinst" "$STAGE/usr/lib/longos/"*.sh "$STAGE/etc/init.d/"* "$STAGE/etc/accel-ppp/"*.sh
+          chmod 755 "$STAGE/www/cgi-bin/"*
           if [ -x openwrt/scripts/ipkg-build ]; then
-            openwrt/scripts/ipkg-build -o root -g root "$STAGE" dist
+            openwrt/scripts/ipkg-build "$STAGE" dist
           elif [ -x openwrt/staging_dir/host/bin/ipkg-build ]; then
-            openwrt/staging_dir/host/bin/ipkg-build -o root -g root "$STAGE" dist
+            openwrt/staging_dir/host/bin/ipkg-build "$STAGE" dist
           else
             echo "警告：未找到 ipkg-build，跳过增量升级包"
           fi

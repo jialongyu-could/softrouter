@@ -45,8 +45,13 @@ cp -a "$SRC_DIR/overlay" files
 # Windows 下拷贝会丢失执行位，这里统一修复
 chmod 755 files/usr/lib/longos/lo.sh \
           files/usr/lib/longos/monitor.sh \
+          files/usr/lib/longos/lo-auth.sh \
           files/usr/sbin/longos \
+          files/usr/sbin/longos-agent \
+          files/www/cgi-bin/longos-auth \
+          files/www/cgi-bin/longos-reg \
           files/etc/init.d/longos \
+          files/etc/init.d/longos-agent \
           files/etc/init.d/trea \
           files/etc/uci-defaults/90-longos \
           files/etc/accel-ppp/ip-up.sh \

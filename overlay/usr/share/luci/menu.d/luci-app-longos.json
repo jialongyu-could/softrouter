@@ -64,5 +64,13 @@
 			"type": "view",
 			"path": "longos/system"
 		}
+	},
+	"admin/services/longos/agent": {
+		"title": "远程 Agent",
+		"order": 80,
+		"action": {
+			"type": "view",
+			"path": "longos/agent"
+		}
 	}
 }

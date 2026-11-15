@@ -1,0 +1,505 @@
+#!/bin/sh
+# LongOS 远程 Agent
+# 无公网 IP 方案：所有连接均由设备主动出站，服务器（有公网 IP）只做回包
+#   1) HTTPS 控制通道（始终可用）：心跳、状态上报、命令下发、用户/权限同步
+#   2) WireGuard（安装 wireguard-tools 时启用）：服务器分配 10.66.0.x，直连管理，低延迟
+#   3) frp（存在 frpc 时启用）：TCP 端口映射，供临时网页/SSH 访问
+# 鉴权：绑定密钥 LK-xxx 一次性换取 device_id + token（60 位随机），之后全部请求带 token
+# 状态文件（0600）：/etc/longos/wg.key、wg.pub、wg.json、frp.json、users.json、perm.json
+
+CONF=longos-agent
+STATE=/etc/longos
+USERS_FILE=$STATE/users.json
+PERM_FILE=$STATE/perm.json
+WG_FILE=$STATE/wg.json
+FRP_FILE=$STATE/frp.json
+DEV_FILE=$STATE/device-id
+LOCK=/var/lock/longos-agent.lock
+POLL_LOG=$STATE/last-poll
+
+log() { logger -t longos-agent "$*"; }
+
+cfg() { uci -q get "$CONF.agent.$1"; }
+setcfg() { uci -q set "$CONF.agent.$1=$2"; }
+
+mask() { printf '%s' "$1" | sed -e 's/\(.\{4\}\).*\(.\{4\}\)$/\1****\2/'; }
+
+# ---------------- 设备标识 ----------------
+
+device_id_get() {
+	local id=""
+	[ -f "$DEV_FILE" ] && id=$(cat "$DEV_FILE" 2>/dev/null)
+	if [ -z "$id" ]; then
+		id=$(cfg device_id)
+	fi
+	if [ -z "$id" ]; then
+		# 优先用主网卡 MAC；退化为随机串，保证唯一且稳定
+		local mac
+		mac=$(cat /sys/class/net/eth0/address 2>/dev/null | tr -d ':')
+		[ -n "$mac" ] || mac=$(dd if=/dev/urandom bs=1 count=6 2>/dev/null | hexdump -v -e '/1 "%02x"')
+		id="lo-$(printf '%s' "$mac" | cut -c1-16)"
+		mkdir -p "$STATE"
+		printf '%s\n' "$id" > "$DEV_FILE"
+		chmod 600 "$DEV_FILE"
+	fi
+	printf '%s' "$id"
+}
+
+mac_get() { cat /sys/class/net/eth0/address 2>/dev/null || printf ''; }
+
+# ---------------- WireGuard 密钥 ----------------
+
+wg_pubkey() {
+	command -v wg >/dev/null 2>&1 || return 0
+	[ -s "$STATE/wg.key" ] || { umask 077; wg genkey > "$STATE/wg.key" 2>/dev/null; }
+	[ -s "$STATE/wg.key" ] || return 0
+	wg pubkey < "$STATE/wg.key" 2>/dev/null | tr -d '\n'
+}
+
+# ---------------- HTTP ----------------
+
+api() { # action auth body
+	local action="$1" auth="$2" data="$3"
+	local url
+	url="$(cfg server)/api/longos_bind.php?action=$action"
+	if [ "$auth" = "1" ]; then
+		printf '%s' "$data" | curl -fsS --max-time 25 \
+			-H 'Content-Type: application/json' \
+			-H "X-Lo-Device: $(cfg device_id)" \
+			-H "X-Lo-Token: $(cfg token)" \
+			--data-binary @- "$url" 2>/dev/null
+	else
+		printf '%s' "$data" | curl -fsS --max-time 25 \
+			-H 'Content-Type: application/json' \
+			--data-binary @- "$url" 2>/dev/null
+	fi
+}
+
+# ---------------- 绑定 ----------------
+
+do_bind() {
+	local key devid name res ok
+	key=$(cfg bind_key)
+	[ -n "$key" ] || { printf '{"ok":false,"msg":"未设置绑定密钥"}'; return 1; }
+	devid=$(device_id_get)
+	name=$(uci -q get system.@system[0].hostname 2>/dev/null)
+	[ -n "$name" ] || name=LongOS
+	res=$(api bind 0 "$(jq -cn \
+		--arg key "$key" --arg device_id "$devid" --arg name "$name" \
+		--arg version "$(cat /etc/longos-version 2>/dev/null || echo unknown)" \
+		--arg model "$(cat /tmp/sysinfo/model 2>/dev/null || echo LongOS x86_64)" \
+		--arg mac "$(mac_get)" --arg wg "$(wg_pubkey)" \
+		'{key:$key,device_id:$device_id,name:$name,version:$version,model:$model,mac:$mac,wg_pubkey:$wg}')")
+	ok=$(printf '%s' "$res" | jq -r '.ok // false' 2>/dev/null)
+	if [ "$ok" != "true" ]; then
+		log "绑定失败: $res"
+		printf '{"ok":false,"msg":%s}' "$(printf '%s' "$res" | jq -c '.error // "绑定失败"' 2>/dev/null || printf '"绑定失败"')"
+		return 1
+	fi
+	setcfg device_id "$(printf '%s' "$res" | jq -r '.device_id')"
+	setcfg token "$(printf '%s' "$res" | jq -r '.token')"
+	uci -q commit "$CONF"
+	mkdir -p "$STATE"
+	printf '%s' "$res" | jq -c '.wg // {}' > "$WG_FILE" 2>/dev/null
+	printf '%s' "$res" | jq -c '.frp // {}' > "$FRP_FILE" 2>/dev/null
+	chmod 600 "$WG_FILE" "$FRP_FILE" 2>/dev/null
+	log "绑定成功: $(cfg device_id)"
+	ensure_wg
+	ensure_frp
+	printf '{"ok":true,"device_id":"%s"}' "$(cfg device_id)"
+}
+
+# ---------------- WireGuard 通道 ----------------
+
+ensure_wg() {
+	command -v wg >/dev/null 2>&1 || { log "未安装 wireguard-tools，跳过 WireGuard"; return 0; }
+	[ -s "$WG_FILE" ] || return 0
+	local priv endpoint host port addr spub
+	priv=$(cat "$STATE/wg.key" 2>/dev/null)
+	[ -n "$priv" ] || { wg_pubkey >/dev/null; priv=$(cat "$STATE/wg.key" 2>/dev/null); }
+	[ -n "$priv" ] || return 0
+	endpoint=$(jq -r '.endpoint // empty' "$WG_FILE" 2>/dev/null)
+	addr=$(jq -r '.address // empty' "$WG_FILE" 2>/dev/null)
+	spub=$(jq -r '.server_pubkey // empty' "$WG_FILE" 2>/dev/null)
+	[ -n "$endpoint" ] && [ -n "$addr" ] && [ -n "$spub" ] || return 0
+	host=${endpoint%%:*}
+	port=${endpoint##*:}
+	case "$port" in ''|*[!0-9]*) port=51820 ;; esac
+
+	uci -q set network.lo_wg=interface
+	uci -q set network.lo_wg.proto='wireguard'
+	uci -q set network.lo_wg.private_key="$priv"
+	uci -q set network.lo_wg.addresses="$addr"
+	uci -q set network.lo_wg.defaultroute='0'
+	uci -q set network.lo_wg_srv=wireguard_lo_wg
+	uci -q set network.lo_wg_srv.description='LongOS 远程管理通道'
+	uci -q set network.lo_wg_srv.public_key="$spub"
+	uci -q set network.lo_wg_srv.endpoint_host="$host"
+	uci -q set network.lo_wg_srv.endpoint_port="$port"
+	uci -q set network.lo_wg_srv.allowed_ips='10.66.0.0/24'
+	uci -q set network.lo_wg_srv.persistent_keepalive='25'
+	uci -q set network.lo_wg_srv.route_allowed_ips='0'
+	uci -q commit network
+
+	# 管理通道防火墙区域：只放行入站，不做转发
+	# 注意：不能用 lo_ 前缀，lo.sh 的 gen_firewall 会清理 lo_* 段
+	uci -q set firewall.wg_mgmt=zone
+	uci -q set firewall.wg_mgmt.name='wg_mgmt'
+	uci -q set firewall.wg_mgmt.input='ACCEPT'
+	uci -q set firewall.wg_mgmt.output='ACCEPT'
+	uci -q set firewall.wg_mgmt.forward='REJECT'
+	uci -q set firewall.wg_mgmt.network='lo_wg'
+	uci -q set firewall.wg_mgmt.masq='0'
+	uci -q commit firewall
+	/etc/init.d/firewall reload >/dev/null 2>&1
+
+	ifup lo_wg >/dev/null 2>&1
+	log "WireGuard 已配置: $addr -> $endpoint"
+}
+
+# ---------------- frp 通道 ----------------
+
+ensure_frp() {
+	local bin cfgfile addr port token rport ver major minor use_toml=0
+	bin=$(command -v frpc 2>/dev/null)
+	[ -n "$bin" ] || bin=$(command -v /usr/bin/frpc 2>/dev/null)
+	[ -n "$bin" ] || { log "未安装 frpc，跳过 frp"; return 0; }
+	[ -s "$FRP_FILE" ] || return 0
+	addr=$(jq -r '.server_addr // empty' "$FRP_FILE" 2>/dev/null)
+	port=$(jq -r '.server_port // 7000' "$FRP_FILE" 2>/dev/null)
+	token=$(jq -r '.token // empty' "$FRP_FILE" 2>/dev/null)
+	rport=$(jq -r '.remote_port // 0' "$FRP_FILE" 2>/dev/null)
+	[ -n "$addr" ] && [ "$rport" != "0" ] || return 0
+
+	# 0.52 起 frp 使用 toml 配置，之前只支持 ini
+	ver=$("$bin" -v 2>/dev/null | sed -n 's/^[^0-9]*\([0-9]\+\.[0-9]\+\).*/\1/p' | head -1)
+	case "$ver" in
+		*.*)
+			major=${ver%%.*}
+			minor=${ver#*.}
+			if [ "$major" -gt 0 ] || [ "$minor" -ge 52 ]; then use_toml=1; fi
+			;;
+	esac
+
+	if [ "$use_toml" = "1" ]; then
+		cfgfile=/etc/longos/frpc.toml
+		cat > "$cfgfile" <<EOF
+serverAddr = "$addr"
+serverPort = $port
+
+auth.method = "token"
+auth.token = "$token"
+
+[[proxies]]
+name = "longos-web"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 80
+remotePort = $rport
+EOF
+	else
+		cfgfile=/etc/longos/frpc.ini
+		cat > "$cfgfile" <<EOF
+[common]
+server_addr = $addr
+server_port = $port
+token = $token
+log_file = /tmp/frpc.log
+log_level = warn
+
+[longos-web]
+type = tcp
+local_ip = 127.0.0.1
+local_port = 80
+remote_port = $rport
+EOF
+	fi
+	chmod 600 "$cfgfile"
+	if ! pgrep -f "frpc -c $cfgfile" >/dev/null 2>&1; then
+		("$bin" -c "$cfgfile" >/dev/null 2>&1 &)
+		log "frp 已启动: $addr:$rport -> 127.0.0.1:80"
+	fi
+}
+
+# ---------------- 状态采集 ----------------
+
+count_wans() {
+	uci -q show longos 2>/dev/null | sed -n 's/^longos\.\([^.=]*\)=wan$/\1/p'
+}
+
+collect_status() {
+	local ver up load mem wc=0 wu=0 v6n=0 id en v6 st
+	ver=$(cat /etc/longos-version 2>/dev/null || echo unknown)
+	up=$(cut -d. -f1 /proc/uptime 2>/dev/null)
+	load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
+	mem=$(awk '/^MemTotal:/{t=$2} /^MemAvailable:/{a=$2} END{if(t>0) printf "%.0f", (t-a)*100/t; else print 0}' /proc/meminfo 2>/dev/null)
+	for id in $(count_wans); do
+		en=$(uci -q get "longos.$id.enabled")
+		[ "$en" = "1" ] || continue
+		wc=$((wc + 1))
+		v6=$(uci -q get "longos.$id.v6")
+		[ "$v6" != "0" ] && v6n=$((v6n + 1))
+		st=$(ifstatus "$id" 2>/dev/null | jq -r '.up // false' 2>/dev/null)
+		[ "$st" = "true" ] && wu=$((wu + 1))
+	done
+	jq -cn --arg version "$ver" --argjson uptime "${up:-0}" --argjson load "${load:-0}" \
+		--argjson mem "${mem:-0}" --argjson wan_count "$wc" --argjson wan_up "$wu" \
+		--argjson ipv6_instances "$v6n" \
+		'{version:$version,uptime:$uptime,cpu_load:$load,mem:$mem,wan_count:$wan_count,wan_up:$wan_up,ipv6_instances:$ipv6_instances}'
+}
+
+# ---------------- 命令执行 ----------------
+
+perm_of() {
+	# 命令 -> 权限模块
+	case "$1" in
+		status) printf 'status' ;;
+		reboot) printf 'reboot' ;;
+		multidial_set) printf 'multidial' ;;
+		ipv6_limit) printf 'ipv6' ;;
+		user_sync) printf 'users' ;;
+		upgrade) printf 'upgrade' ;;
+		*) printf 'remote' ;;
+	esac
+}
+
+perm_allowed() {
+	local mod="$1"
+	[ -s "$PERM_FILE" ] || return 0
+	local v
+	v=$(jq -r --arg m "$mod" '.[$m] // true' "$PERM_FILE" 2>/dev/null)
+	[ "$v" = "false" ] && return 1
+	return 0
+}
+
+apply_multidial() { # args: {"count":N}
+	local count i id base v
+	count=$(printf '%s' "$1" | jq -r '.count // 0' 2>/dev/null)
+	case "$count" in ''|*[!0-9]*) printf '{"ok":false,"msg":"count 非法"}'; return ;; esac
+	[ "$count" -ge 1 ] && [ "$count" -le 16 ] || { printf '{"ok":false,"msg":"多拨数量需在 1~16 之间"}'; return; }
+	base=$(count_wans | head -1)
+	[ -n "$base" ] || { printf '{"ok":false,"msg":"请先在面板配置至少一条 WAN"}'; return; }
+
+	i=1
+	while [ "$i" -le "$count" ]; do
+		id="wan$i"
+		if ! uci -q get "longos.$id" >/dev/null 2>&1; then
+			uci -q set "longos.$id=wan"
+			for v in device vlan mode user pass mtu weight v6; do
+				local val
+				val=$(uci -q get "longos.$base.$v")
+				[ -n "$val" ] && uci -q set "longos.$id.$v=$val"
+			done
+			uci -q set "longos.$id.name=多拨$i"
+		fi
+		uci -q set "longos.$id.enabled=1"
+		i=$((i + 1))
+	done
+	for id in $(count_wans); do
+		case "$id" in wan*) ;; *) continue ;; esac
+		local n=${id#wan}
+		case "$n" in ''|*[!0-9]*) continue ;; esac
+		[ "$n" -gt "$count" ] && uci -q set "longos.$id.enabled=0"
+	done
+	uci -q commit longos
+	/usr/lib/longos/lo.sh apply >/dev/null 2>&1
+	printf '{"ok":true,"count":%s}' "$count"
+}
+
+apply_ipv6_limit() { # args: {"max":N}
+	local max i=0 id v6 keep
+	max=$(printf '%s' "$1" | jq -r '.max // 0' 2>/dev/null)
+	case "$max" in ''|*[!0-9]*) printf '{"ok":false,"msg":"max 非法"}'; return ;; esac
+	[ "$max" -ge 0 ] && [ "$max" -le 16 ] || { printf '{"ok":false,"msg":"IPv6 实例上限需在 0~16 之间"}'; return; }
+	uci -q set "longos.settings.ipv6_max=$max"
+	for id in $(count_wans); do
+		[ "$(uci -q get "longos.$id.enabled")" = "1" ] || continue
+		v6=$(uci -q get "longos.$id.v6")
+		[ "$v6" = "0" ] && continue
+		i=$((i + 1))
+		[ "$i" -gt "$max" ] && uci -q set "longos.$id.v6=0"
+	done
+	uci -q commit longos
+	/usr/lib/longos/lo.sh apply >/dev/null 2>&1
+	keep=$i
+	[ "$keep" -gt "$max" ] && keep=$max
+	printf '{"ok":true,"ipv6_instances":%s,"max":%s}' "$keep" "$max"
+}
+
+save_users() { # stdin: users JSON array
+	local tmp="$USERS_FILE.$$"
+	printf '{"updated":%s,"users":%s}' "$(date +%s)" "$(cat)" > "$tmp"
+	mv -f "$tmp" "$USERS_FILE"
+	chmod 600 "$USERS_FILE"
+}
+
+run_task() { # id cmd args-json
+	local id="$1" cmd="$2" args="$3" out mod
+	[ -n "$args" ] || args='{}'
+	mod=$(perm_of "$cmd")
+	if ! perm_allowed "$mod"; then
+		printf '{"id":%s,"ok":false,"result":"权限不足：%s 模块未授权"}' "$id" "$mod"
+		return
+	fi
+	case "$cmd" in
+		ping) printf '{"id":%s,"ok":true,"result":"pong"}' "$id" ;;
+		status) printf '{"id":%s,"ok":true,"result":%s}' "$id" "$(collect_status)" ;;
+		reboot)
+			printf '{"id":%s,"ok":true,"result":"设备将在 2 秒后重启"}' "$id"
+			(sleep 2; reboot) >/dev/null 2>&1 &
+			;;
+		multidial_set)
+			out=$(apply_multidial "$args")
+			printf '{"id":%s,"ok":%s,"result":%s}' "$id" \
+				"$(printf '%s' "$out" | jq -r '.ok // false')" \
+				"$(printf '%s' "$out" | jq -c '.msg // "已应用"')"
+			;;
+		ipv6_limit)
+			out=$(apply_ipv6_limit "$args")
+			printf '{"id":%s,"ok":%s,"result":%s}' "$id" \
+				"$(printf '%s' "$out" | jq -r '.ok // false')" \
+				"$(printf '%s' "$out" | jq -c '.msg // "已应用"')"
+			;;
+		user_sync)
+			# 用户快照随每次 poll 下发，这里只回报本机已同步数量
+			printf '{"id":%s,"ok":true,"result":"已同步 %s 个账号"}' "$id" \
+				"$(jq -r '.users | length' "$USERS_FILE" 2>/dev/null || echo 0)"
+			;;
+		perm_set)
+			printf '%s' "$args" | jq -c '.perms // .' > "$PERM_FILE" 2>/dev/null
+			chmod 600 "$PERM_FILE" 2>/dev/null
+			printf '{"id":%s,"ok":true,"result":"权限已更新"}' "$id"
+			;;
+		wg_apply) ensure_wg; printf '{"id":%s,"ok":true,"result":"WireGuard 已应用"}' "$id" ;;
+		frp_apply) ensure_frp; printf '{"id":%s,"ok":true,"result":"frp 已应用"}' "$id" ;;
+		upgrade)
+			local url sha
+			url=$(printf '%s' "$args" | jq -r '.url // empty' 2>/dev/null)
+			sha=$(printf '%s' "$args" | jq -r '.sha256 // empty' 2>/dev/null)
+			case "$url" in https://*) ;; *) printf '{"id":%s,"ok":false,"result":"升级地址必须为 https"}' "$id"; return ;; esac
+			(
+				curl -fsSL --max-time 300 -o /tmp/lo-upgrade.ipk "$url" || exit 1
+				if [ -n "$sha" ]; then
+					echo "$sha  /tmp/lo-upgrade.ipk" | sha256sum -c - >/dev/null 2>&1 || exit 2
+				fi
+				opkg install --force-reinstall /tmp/lo-upgrade.ipk >/tmp/lo-upgrade.log 2>&1 || exit 3
+				rm -f /tmp/lo-upgrade.ipk
+				log "升级完成"
+			) >/dev/null 2>&1 &
+			printf '{"id":%s,"ok":true,"result":"升级任务已开始"}' "$id"
+			;;
+		*) printf '{"id":%s,"ok":false,"result":"未知命令"}' "$id" ;;
+	esac
+}
+
+# ---------------- 主循环 ----------------
+
+report_result() { # json-from-run_task
+	local payload="$1"
+	api result 1 "$payload" >/dev/null 2>&1
+}
+
+poll_once() {
+	local status res tasks users n i t id cmd args payload
+	status=$(collect_status)
+	res=$(api poll 1 "$status")
+	[ -n "$res" ] || { log "poll 无响应"; return 1; }
+	printf '%s' "$res" | jq -r '.ok // false' 2>/dev/null | grep -q true || {
+		log "poll 失败: $(printf '%s' "$res" | cut -c1-200)"
+		return 1
+	}
+
+	# 用户列表同步（网站注册的 LongOS 账号 -> 本机用户列表）
+	users=$(printf '%s' "$res" | jq -c '.users // empty' 2>/dev/null)
+	[ -n "$users" ] && printf '%s' "$users" | save_users
+
+	# 设备级权限
+	printf '%s' "$res" | jq -c '.perms // empty' 2>/dev/null | grep -q . && {
+		printf '%s' "$res" | jq -c '.perms' > "$PERM_FILE"
+		chmod 600 "$PERM_FILE" 2>/dev/null
+	}
+
+	n=$(printf '%s' "$res" | jq -r '.tasks | length' 2>/dev/null)
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	i=0
+	while [ "$i" -lt "$n" ]; do
+		id=$(printf '%s' "$res" | jq -r ".tasks[$i].id // 0")
+		cmd=$(printf '%s' "$res" | jq -r ".tasks[$i].cmd // empty")
+		args=$(printf '%s' "$res" | jq -c ".tasks[$i].args // {}")
+		[ -n "$cmd" ] && {
+			payload=$(run_task "$id" "$cmd" "$args")
+			report_result "$payload"
+		}
+		i=$((i + 1))
+	done
+
+	date +%s > "$POLL_LOG"
+	return 0
+}
+
+run_loop() {
+	local interval
+	while :; do
+		if [ "$(cfg enabled)" = "0" ]; then
+			sleep 5
+			continue
+		fi
+		if [ -z "$(cfg token)" ] || [ -z "$(cfg device_id)" ]; then
+			do_bind >/dev/null 2>&1 || { sleep 20; continue; }
+		fi
+		poll_once || true
+		interval=$(cfg interval)
+		case "$interval" in ''|*[!0-9]*) interval=15 ;; esac
+		[ "$interval" -lt 5 ] && interval=5
+		sleep "$interval"
+	done
+}
+
+# ---------------- 入口 ----------------
+
+case "$1" in
+	run)
+		mkdir -p "$STATE" /var/lock
+		if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+			log "已有实例在运行"
+			exit 0
+		fi
+		echo $$ > "$LOCK"
+		trap 'rm -f "$LOCK"' EXIT
+		run_loop
+		;;
+	bind)
+		mkdir -p "$STATE"
+		do_bind
+		;;
+	once)
+		poll_once && printf '{"ok":true}' || printf '{"ok":false}'
+		;;
+	perm)
+		# 供自检/联调：检查某条远程命令在当前权限下是否允许执行
+		if perm_allowed "$(perm_of "${2:-}")"; then
+			printf '{"ok":true,"module":"%s"}' "$(perm_of "${2:-}")"
+		else
+			printf '{"ok":false,"module":"%s","msg":"权限不足"}' "$(perm_of "${2:-}")"
+		fi
+		;;
+	state)
+		bound=false
+		[ -n "$(cfg token)" ] && bound=true
+		last=0
+		[ -f "$POLL_LOG" ] && last=$(cat "$POLL_LOG" 2>/dev/null)
+		wgup=false
+		ip -4 addr show lo_wg 2>/dev/null | grep -q inet && wgup=true
+		jq -cn --argjson bound "$bound" --arg device "$(cfg device_id)" \
+			--arg server "$(cfg server)" --argjson last "${last:-0}" \
+			--argjson users "$(jq -r '.users | length' "$USERS_FILE" 2>/dev/null || echo 0)" \
+			--arg wg "$(jq -r '.address // ""' "$WG_FILE" 2>/dev/null)" \
+			--argjson wg_up "$wgup" \
+			--arg frp "$(jq -r '.remote_port // ""' "$FRP_FILE" 2>/dev/null)" \
+			'{ok:true,bound:$bound,device_id:$device,server:$server,last_poll:$last,
+			  users:$users,wg_address:$wg,wg_up:$wg_up,frp_port:$frp}'
+		;;
+	*)
+		printf '{"ok":false,"msg":"usage: longos-agent run|bind|once|state"}'
+		;;
+esac

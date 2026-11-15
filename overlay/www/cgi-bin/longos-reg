@@ -1,0 +1,53 @@
+#!/bin/sh
+# LongOS 用户注册/激活 CGI
+# 设备侧只做“同源代理”，把注册请求转发到绑定的 LongOS 服务端（避免浏览器跨域，也不在设备上存密码）：
+#   GET  ?action=info               返回服务端地址与绑定状态
+#   POST {action:register|activate|resend, ...}  转发到 {server}/api/longos_register.php
+# 账号数据、密码哈希、激活码、权限分配全部在服务端数据库，设备只读取同步下来的用户列表
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+printf 'Content-Type: application/json; charset=utf-8\r\n'
+printf 'Cache-Control: no-store, no-cache, must-revalidate\r\n'
+printf 'X-Content-Type-Options: nosniff\r\n'
+printf '\r\n'
+
+server=$(uci -q get longos-agent.agent.server 2>/dev/null)
+case "$server" in
+	https://*) ;;
+	*) server="" ;;
+esac
+
+if [ "$REQUEST_METHOD" = "POST" ]; then
+	len=${CONTENT_LENGTH:-0}
+	case "$len" in ''|*[!0-9]*) len=0 ;; esac
+	[ "$len" -gt 8192 ] && len=8192
+	body=$(dd bs=1 count="$len" 2>/dev/null)
+	action=$(printf '%s' "$body" | jq -r '.action // "register"' 2>/dev/null)
+	case "$action" in register|activate|resend) ;; *) action=register ;; esac
+	[ -n "$server" ] || { printf '{"ok":false,"msg":"设备尚未绑定服务器，请先在管理后台完成绑定"}'; exit 0; }
+	# 清掉本机 action 后再转发，服务端按 action 分发
+	payload=$(printf '%s' "$body" | jq -c 'del(.action)' 2>/dev/null)
+	[ -n "$payload" ] || payload='{}'
+	printf '%s' "$payload" | curl -fsS --max-time 20 \
+		-H 'Content-Type: application/json' \
+		-H 'X-LongOS-Device: 1' \
+		--data-binary @- "$server/api/longos_register.php?action=$action" 2>/dev/null \
+		|| printf '{"ok":false,"msg":"无法连接注册服务器，请检查网络或稍后重试"}'
+	exit 0
+fi
+
+q=${QUERY_STRING%%&*}
+case "$q" in
+	action=info|'')
+		bound=false
+		[ -n "$(uci -q get longos-agent.agent.token)" ] && bound=true
+		jq -cn --arg server "$server" --argjson bound "$bound" \
+			'{ok:true,server:$server,bound:$bound,registered:($server != "")}'
+		;;
+	*)
+		printf '{"ok":false,"msg":"unknown action"}'
+		;;
+esac
+exit 0

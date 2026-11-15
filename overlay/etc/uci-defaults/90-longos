@@ -36,11 +36,36 @@ uci -q set system.@system[0].timezone='CST-8'
 uci -q set system.@system[0].zonename='Asia/Shanghai'
 uci -q commit system
 
-chmod 755 /usr/lib/longos/lo.sh /usr/lib/longos/monitor.sh /usr/sbin/longos \
+# ---- 默认管理员账号 longos / longos ----
+# uid 0：面板 rpcd 的 file.exec ACL 按 root 放行，普通用户会缺少写权限
+# 首次登录必须改密：标记文件存在期间，lo.sh 只放行密码相关命令
+LO_PWFLAG=/etc/longos/pwchange
+mkdir -p /etc/longos
+if ! grep -q '^longos:' /etc/passwd; then
+	echo 'longos:x:0:0:LongOS Admin:/root:/bin/ash' >> /etc/passwd
+	echo 'longos:!:0:0:99999:7:::' >> /etc/shadow
+	printf 'longos:longos\n' | chpasswd 2>/dev/null || \
+		printf 'longos\nlongos\n' | passwd longos >/dev/null 2>&1
+	printf 'longos\n' > "$LO_PWFLAG"
+elif [ -f "$LO_PWFLAG" ]; then
+	# 账号存在且仍处于初始状态（从未改密）：保持默认密码可用，升级不打断首登流程
+	printf 'longos:longos\n' | chpasswd 2>/dev/null || \
+		printf 'longos\nlongos\n' | passwd longos >/dev/null 2>&1
+fi
+chmod 600 "$LO_PWFLAG" 2>/dev/null
+
+chmod 755 /usr/lib/longos/lo.sh /usr/lib/longos/monitor.sh /usr/lib/longos/lo-auth.sh \
+	/usr/sbin/longos /usr/sbin/longos-agent \
+	/www/cgi-bin/longos-auth /www/cgi-bin/longos-reg \
 	/etc/accel-ppp/ip-up.sh /etc/accel-ppp/ip-down.sh 2>/dev/null
+chmod 600 /etc/config/longos-agent 2>/dev/null
+
+[ -f /etc/config/longos-agent ] || printf "config agent 'agent'\n\toption enabled '1'\n\toption server 'https://www.yjlxxcc.top'\n\toption interval '15'\n" > /etc/config/longos-agent
 
 /etc/init.d/longos enable 2>/dev/null
 /etc/init.d/longos restart 2>/dev/null
+/etc/init.d/longos-agent enable 2>/dev/null
+/etc/init.d/longos-agent restart 2>/dev/null
 
 rm -f /etc/uci-defaults/90-longos
 exit 0

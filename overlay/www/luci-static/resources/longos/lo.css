@@ -190,3 +190,9 @@
 	.lo-two { grid-template-columns: 1fr; gap: 0; }
 }
 
+
+/* 远程 Agent 状态卡 */
+.lo-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin: 4px 0 14px; }
+.lo-stat { background: rgba(15, 23, 42, 0.55); border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; }
+.lo-stat-label { font-size: 11px; color: #94a3b8; margin-bottom: 5px; }
+.lo-stat-value { font-size: 14px; color: #e2e8f0; font-family: ui-monospace, Menlo, monospace; word-break: break-all; }

@@ -74,3 +74,12 @@ CONFIG_PACKAGE_kmod-ixgbe=y
 # 可选：流量统计
 CONFIG_PACKAGE_nlbwmon=y
 CONFIG_PACKAGE_luci-app-nlbwmon=y
+
+# 远程穿透：WireGuard 直连通道（无公网 IP 场景由设备主动出站）
+CONFIG_PACKAGE_kmod-wireguard=y
+CONFIG_PACKAGE_wireguard-tools=y
+CONFIG_PACKAGE_kmod-udptunnel4=y
+CONFIG_PACKAGE_kmod-udptunnel6=y
+
+# 远程穿透：frp 客户端（存在 frpc 时 Agent 自动生成配置并拉起）
+CONFIG_PACKAGE_frpc=y

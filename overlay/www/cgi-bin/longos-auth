@@ -1,0 +1,40 @@
+#!/bin/sh
+# LongOS 改密 CGI（公开入口，供未登录场景的改密页调用）
+# 只暴露两个能力：
+#   GET  /cgi-bin/longos-auth?action=state   查询是否需要强制改密
+#   POST /cgi-bin/longos-auth                旧密码校验后修改密码（JSON）
+# 真正的校验逻辑在 /usr/lib/longos/lo-auth.sh，与面板共用，避免两套规则
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+AUTH_LIB=/usr/lib/longos/lo-auth.sh
+
+printf 'Content-Type: application/json; charset=utf-8\r\n'
+printf 'Cache-Control: no-store, no-cache, must-revalidate\r\n'
+printf 'X-Content-Type-Options: nosniff\r\n'
+printf '\r\n'
+
+if [ ! -x "$AUTH_LIB" ]; then
+	printf '{"ok":false,"msg":"auth library missing"}'
+	exit 0
+fi
+
+case "$REQUEST_METHOD" in
+	POST)
+		len=${CONTENT_LENGTH:-0}
+		case "$len" in ''|*[!0-9]*) len=0 ;; esac
+		# 限制请求体大小，避免超大 body 撑爆内存
+		[ "$len" -gt 4096 ] && len=4096
+		body=$(dd bs=1 count="$len" 2>/dev/null)
+		"$AUTH_LIB" change "$body"
+		;;
+	*)
+		q=${QUERY_STRING%%&*}
+		case "$q" in
+			action=state|'') "$AUTH_LIB" state ;;
+			*) printf '{"ok":false,"msg":"unknown action"}' ;;
+		esac
+		;;
+esac
+exit 0

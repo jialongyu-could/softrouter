@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>修改默认密码 - LongOS</title>
+<style>
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body {
+		font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+		background: linear-gradient(135deg, #eef5fc 0%, #f6fafe 45%, #e9f2fb 100%);
+		color: #333;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 100%;
+		overflow: auto;
+		position: relative;
+		padding: 24px 0;
+	}
+	body::before, body::after {
+		content: "";
+		position: fixed;
+		border-radius: 50%;
+		filter: blur(60px);
+		pointer-events: none;
+	}
+	body::before {
+		width: 720px; height: 720px; left: -260px; top: -320px;
+		background: radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(214,232,250,.55) 55%, rgba(214,232,250,0) 100%);
+	}
+	body::after {
+		width: 820px; height: 820px; right: -300px; bottom: -380px;
+		background: radial-gradient(circle, rgba(255,255,255,.9) 0%, rgba(203,224,247,.5) 55%, rgba(203,224,247,0) 100%);
+	}
+	.card {
+		position: relative;
+		z-index: 1;
+		width: 440px;
+		max-width: calc(100vw - 32px);
+		padding: 30px 30px 24px;
+		border-radius: 12px;
+		background: rgba(255, 255, 255, 0.66);
+		backdrop-filter: blur(18px);
+		-webkit-backdrop-filter: blur(18px);
+		box-shadow: 0 2px 20px rgba(0, 0, 0, 0.05);
+		animation: cardin .4s ease-out both;
+	}
+	@keyframes cardin {
+		from { opacity: 0; transform: translateY(14px); }
+		to   { opacity: 1; transform: none; }
+	}
+	.logo {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		margin-bottom: 14px;
+	}
+	.logo .mark {
+		width: 34px; height: 34px;
+		border-radius: 9px;
+		background: linear-gradient(135deg, #1677ff, #4c9dff);
+		color: #fff;
+		font-size: 19px;
+		font-weight: 700;
+		line-height: 34px;
+		text-align: center;
+	}
+	.logo .word {
+		font-size: 27px;
+		font-weight: 800;
+		letter-spacing: 0.5px;
+		color: #1677ff;
+	}
+	.title { margin: 0 0 6px; font-size: 17px; font-weight: 700; text-align: center; }
+	.subtitle { margin: 0 0 18px; font-size: 12px; line-height: 1.7; color: #8d97a6; text-align: center; }
+	.alert {
+		margin: 0 0 16px;
+		padding: 9px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		line-height: 1.7;
+		color: #ad6800;
+		background: #fffbe6;
+		border: 1px solid #ffe58f;
+	}
+	.err {
+		display: none;
+		margin: 0 0 14px;
+		padding: 8px 12px;
+		border-radius: 6px;
+		font-size: 12px;
+		color: #d4380d;
+		background: #fff2e8;
+		border: 1px solid #ffd8bf;
+	}
+	.field { position: relative; margin-bottom: 14px; }
+	.field label { display: block; margin-bottom: 6px; font-size: 12px; color: #5b6675; }
+	.field input {
+		width: 100%;
+		height: 40px;
+		padding: 0 12px;
+		border: 1px solid #e3e9f2;
+		border-radius: 6px;
+		background: #fff;
+		font-size: 14px;
+		color: #333;
+		outline: 0;
+		transition: border-color .15s, box-shadow .15s;
+	}
+	.field input::placeholder { color: #b9c2cf; }
+	.field input:focus { border-color: #1677ff; box-shadow: 0 0 0 2px rgba(22,119,255,.12); }
+	.rules {
+		margin: 4px 0 16px;
+		padding: 10px 12px;
+		border-radius: 6px;
+		background: rgba(22, 119, 255, .04);
+		border: 1px solid rgba(22, 119, 255, .12);
+		font-size: 12px;
+		line-height: 1.9;
+		color: #5b6675;
+	}
+	.rules b { font-weight: 600; }
+	.rules li { list-style: none; position: relative; padding-left: 18px; }
+	.rules li::before {
+		content: "○";
+		position: absolute;
+		left: 2px;
+		color: #b6c0cd;
+	}
+	.rules li.ok::before { content: "●"; color: #52c41a; }
+	.rules li.ok { color: #389e0d; }
+	.btn {
+		width: 100%;
+		height: 40px;
+		border: 0;
+		border-radius: 6px;
+		background: #1677ff;
+		color: #fff;
+		font-size: 15px;
+		letter-spacing: 2px;
+		cursor: pointer;
+		transition: background .15s, box-shadow .15s;
+	}
+	.btn:hover { background: #0f66e0; box-shadow: 0 4px 14px rgba(22,119,255,.3); }
+	.btn:active { transform: translateY(1px); }
+	.btn[disabled] { background: #a9c9f5; cursor: not-allowed; box-shadow: none; }
+	.foot { margin-top: 14px; font-size: 11px; color: #a9b3c1; text-align: center; }
+	.foot a { color: #1677ff; text-decoration: none; }
+	.okbox { text-align: center; padding: 10px 0 4px; }
+	.okbox .ico {
+		width: 54px; height: 54px; margin: 0 auto 14px;
+		border-radius: 50%;
+		background: #f6ffed;
+		border: 1px solid #b7eb8f;
+		color: #52c41a;
+		font-size: 30px;
+		line-height: 52px;
+	}
+	.okbox h3 { margin: 0 0 8px; font-size: 17px; }
+	.okbox p { margin: 0; font-size: 12px; line-height: 1.8; color: #8d97a6; }
+	.hidden { display: none !important; }
+</style>
+</head>
+<body>
+	<form class="card" id="form" autocomplete="off">
+		<div class="logo">
+			<span class="mark">L</span>
+			<span class="word">LongOS</span>
+		</div>
+
+		<div id="panel">
+			<h1 class="title">修改默认登录密码</h1>
+			<p class="subtitle">系统检测到当前仍在使用默认密码，为保障设备安全，请先设置新的登录密码</p>
+
+			<div class="alert">修改成功后需要使用新密码重新登录，当前所有登录会话将自动失效。</div>
+			<div class="err" id="err"></div>
+
+			<div class="field">
+				<label for="user">登录账号</label>
+				<input id="user" type="text" value="longos" readonly>
+			</div>
+
+			<div class="field">
+				<label for="old">旧密码（默认密码）</label>
+				<input id="old" type="password" placeholder="请输入当前密码" autocomplete="current-password">
+			</div>
+
+			<div class="field">
+				<label for="new">新密码</label>
+				<input id="new" type="password" placeholder="请输入新密码" autocomplete="new-password">
+			</div>
+
+			<div class="field">
+				<label for="confirm">确认新密码</label>
+				<input id="confirm" type="password" placeholder="请再次输入新密码" autocomplete="new-password">
+			</div>
+
+			<ul class="rules" id="rules">
+				<li data-rule="len">长度 <b>10 ~ 64</b> 位</li>
+				<li data-rule="cls">包含大写、小写、数字、符号中至少 <b>3 类</b></li>
+				<li data-rule="space">不含空格等空白字符</li>
+				<li data-rule="user">不含账号名 longos</li>
+				<li data-rule="diff">与旧密码不同</li>
+				<li data-rule="same">两次输入一致</li>
+			</ul>
+
+			<button type="submit" class="btn" id="submit">确 认 修 改</button>
+			<p class="foot">修改完成后将自动返回登录页，请使用新密码登录</p>
+		</div>
+
+		<div id="done" class="okbox hidden">
+			<div class="ico">✓</div>
+			<h3>密码修改成功</h3>
+			<p>正在退出登录并返回登录页，请稍候…<br>如未自动跳转，请点击 <a href="/cgi-bin/luci/">重新登录</a></p>
+		</div>
+	</form>
+
+	<script>
+	(function() {
+		var $ = function(id) { return document.getElementById(id); };
+		var panel = $('panel'), done = $('done'), errBox = $('err'), submit = $('submit');
+		var oldPw = $('old'), newPw = $('new'), cfPw = $('confirm'), userInput = $('user');
+		var rules = $('rules');
+		var MIN_LEN = 10, MAX_LEN = 64;
+
+		function showErr(msg) {
+			errBox.textContent = msg || '';
+			errBox.style.display = msg ? 'block' : 'none';
+		}
+
+		function classes(pw) {
+			var c = 0;
+			if (/[a-z]/.test(pw)) c++;
+			if (/[A-Z]/.test(pw)) c++;
+			if (/[0-9]/.test(pw)) c++;
+			if (/[^a-zA-Z0-9]/.test(pw)) c++;
+			return c;
+		}
+
+		// 与后端 lo-auth.sh 的校验规则保持完全一致
+		function check() {
+			var np = newPw.value, cf = cfPw.value, op = oldPw.value;
+			var r = {
+				len:   np.length >= MIN_LEN && np.length <= MAX_LEN,
+				cls:   classes(np) >= 3,
+				space: np.length > 0 && !/\s/.test(np),
+				user:  np.length > 0 && np.toLowerCase().indexOf('longos') < 0,
+				diff:  np.length > 0 && np !== op,
+				same:  cf.length > 0 && np === cf
+			};
+			Object.keys(r).forEach(function(k) {
+				var li = rules.querySelector('[data-rule="' + k + '"]');
+				if (li) li.className = r[k] ? 'ok' : '';
+			});
+			return r;
+		}
+
+		// 首次进入：确认确实处于“必须改密”状态
+		function loadState() {
+			var xhr = new XMLHttpRequest();
+			xhr.open('GET', '/cgi-bin/longos-auth?action=state&_=' + Date.now(), true);
+			xhr.timeout = 5000;
+			xhr.onload = function() {
+				var s = null;
+				try { s = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+				if (s && s.users && s.users.length) userInput.value = s.users[0];
+				if (s && typeof s.min_len === 'number' && s.min_len > 0) MIN_LEN = s.min_len;
+				if (s && s.must_change === false) {
+					showErr('当前账号无需强制修改密码，请直接登录。');
+					submit.disabled = true;
+				}
+			};
+			xhr.send();
+		}
+
+		[oldPw, newPw, cfPw].forEach(function(el) {
+			el.addEventListener('input', function() { showErr(''); check(); });
+		});
+
+		$('form').addEventListener('submit', function(ev) {
+			ev.preventDefault();
+			var r = check();
+			if (!oldPw.value) { showErr('请输入旧密码'); oldPw.focus(); return; }
+			for (var k in r) {
+				if (!r[k]) {
+					if (k === 'len') showErr('新密码长度需为 ' + MIN_LEN + ' ~ ' + MAX_LEN + ' 位');
+					else if (k === 'cls') showErr('新密码需包含大写字母、小写字母、数字、符号中的至少 3 类');
+					else if (k === 'space') showErr('新密码不能包含空格等空白字符');
+					else if (k === 'user') showErr('新密码不能包含账号名 longos');
+					else if (k === 'diff') showErr('新密码不能与旧密码相同');
+					else if (k === 'same') showErr('两次输入的新密码不一致');
+					return;
+				}
+			}
+
+			submit.disabled = true;
+			submit.textContent = '正在提交…';
+			var xhr = new XMLHttpRequest();
+			xhr.open('POST', '/cgi-bin/longos-auth?_=' + Date.now(), true);
+			xhr.setRequestHeader('Content-Type', 'application/json');
+			xhr.timeout = 15000;
+			xhr.onload = function() {
+				var d = null;
+				try { d = JSON.parse(xhr.responseText || '{}'); } catch (e) {}
+				if (d && d.ok) {
+					panel.classList.add('hidden');
+					done.classList.remove('hidden');
+					// 先清理浏览器端会话 Cookie，再等 rpcd 重启销毁服务端会话
+					clearCookies();
+					setTimeout(function() { location.replace('/cgi-bin/luci/'); }, 3000);
+					return;
+				}
+				submit.disabled = false;
+				submit.textContent = '确 认 修 改';
+				showErr((d && d.msg) || '修改失败，请重试');
+			};
+			xhr.onerror = xhr.ontimeout = function() {
+				submit.disabled = false;
+				submit.textContent = '确 认 修 改';
+				showErr('网络异常，请检查与路由器的连接后重试');
+			};
+			xhr.send(JSON.stringify({
+				user: userInput.value,
+				old: oldPw.value,
+				'new': newPw.value,
+				confirm: cfPw.value
+			}));
+		});
+
+		function clearCookies() {
+			['sysauth', 'sysauth_http', 'sysauth_https'].forEach(function(n) {
+				document.cookie = n + '=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+			});
+		}
+
+		loadState();
+		check();
+	})();
+	</script>
+</body>
+</html>
