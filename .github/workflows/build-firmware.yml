@@ -129,8 +129,10 @@ jobs:
                     openwrt/files/usr/lib/longos/monitor.sh \
                     openwrt/files/usr/sbin/longos \
                     openwrt/files/etc/init.d/longos \
+                    openwrt/files/etc/init.d/longos-tuning \
                     openwrt/files/etc/init.d/trea \
                     openwrt/files/etc/uci-defaults/90-longos \
+                    openwrt/files/etc/uci-defaults/91-longos-tuning \
                     openwrt/files/etc/accel-ppp/ip-up.sh \
                     openwrt/files/etc/accel-ppp/ip-down.sh
           find openwrt/files -maxdepth 4 -type f | sort

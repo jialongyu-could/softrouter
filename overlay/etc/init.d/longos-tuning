@@ -1,0 +1,48 @@
+#!/bin/sh /etc/rc.common
+# LongOS 高并发 sysctl 调优
+# 必须在 firewall 之后执行：nf_conntrack 模块加载前写入 net.netfilter.* 会失败
+START=21
+STOP=10
+
+CONF=/etc/sysctl.d/99-longos-tuning.conf
+BUCKETS=131072
+
+apply_conf() {
+	local k v
+	[ -f "$CONF" ] || return 0
+	while IFS='=' read -r k v; do
+		k=$(echo "$k" | tr -d ' \t')
+		v=$(echo "$v" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		case "$k" in ''|'#'*) continue ;; esac
+		[ -n "$v" ] || continue
+		sysctl -w "$k=$v" >/dev/null 2>&1
+	done < "$CONF"
+
+	# buckets 在部分内核上只能通过模块参数写入
+	if [ -w /sys/module/nf_conntrack/parameters/hashsize ]; then
+		echo "$BUCKETS" > /sys/module/nf_conntrack/parameters/hashsize 2>/dev/null
+	fi
+
+	local max cur
+	max=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null)
+	cur=$(cat /proc/sys/net/netfilter/nf_conntrack_buckets 2>/dev/null)
+	logger -t longos-tuning "conntrack max=${max:-NA} buckets=${cur:-NA}"
+}
+
+start() {
+	local i=0
+	# 等待 nf_conntrack 就绪，最多 15 秒
+	while [ ! -e /proc/sys/net/netfilter/nf_conntrack_max ] && [ "$i" -lt 15 ]; do
+		i=$((i + 1))
+		sleep 1
+	done
+	apply_conf
+}
+
+boot() {
+	start
+}
+
+reload() {
+	start
+}

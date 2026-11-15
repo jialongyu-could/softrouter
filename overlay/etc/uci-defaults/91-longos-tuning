@@ -1,0 +1,9 @@
+#!/bin/sh
+# 首启启用高并发 sysctl 调优（服务本身在每次开机 firewall 之后重新应用）
+
+[ -x /etc/init.d/longos-tuning ] && {
+	/etc/init.d/longos-tuning enable
+	/etc/init.d/longos-tuning start
+}
+
+exit 0
