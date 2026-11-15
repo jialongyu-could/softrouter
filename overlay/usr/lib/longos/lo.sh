@@ -1699,8 +1699,9 @@ cmd_settings() {
 	jq -cn --arg hostname "$hostname" --arg dns1 "$dns1" --arg dns2 "$dns2" \
 		--arg p4 "$p4" --arg p6 "$p6" --argjson interval "$(jnum "$interval")" --arg tz "$tz" \
 		--arg version "$(cat "$VERSION_FILE" 2>/dev/null || echo 1.0.0)" --arg arch "$(uname -m)" \
+		--arg build "$(cat /etc/longos-build 2>/dev/null)" \
 		'{ok:true,hostname:$hostname,dns1:$dns1,dns2:$dns2,ping4:$p4,ping6:$p6,monitor_interval:$interval,
-		  timezone:$tz,version:$version,arch:$arch}'
+		  timezone:$tz,version:$version,arch:$arch,build:$build}'
 }
 
 del_wan() {

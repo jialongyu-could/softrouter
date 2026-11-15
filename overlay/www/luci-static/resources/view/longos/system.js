@@ -98,6 +98,7 @@ return view.extend({
 		var cpu = sys.cpu || {}, mem = sys.mem || {};
 		var infoRows = [
 			[ '固件版本', s.version || sys.version || '--' ],
+			[ '构建信息', s.build || '--' ],
 			[ '架构', s.arch || sys.arch || '--' ],
 			[ '主机名', sys.hostname || s.hostname || '--' ],
 			[ '运行时长', api.dur(sys.uptime || 0) ],
@@ -117,8 +118,14 @@ return view.extend({
 				this.treaBox
 			]),
 			E('div', { 'class': 'lo-card' }, [
-				E('h3', {}, [ '系统操作' ]),
+				E('h3', {}, [ '固件升级与备份', api.badge('必备', 'warn') ]),
+				E('p', { 'class': 'lo-desc' }, [
+					'完整升级：上传 combined-efi.img.gz，默认保留全部配置；仅修复面板/脚本问题时可直接安装 longos-core 增量包，不用重刷固件。'
+				]),
 				E('div', { 'class': 'lo-toolbar' }, [
+					api.btn('固件升级 / 配置备份', 'cbi-button-action', function() {
+						location.href = L.url('admin/system/flash');
+					}),
 					api.btn('重启设备', 'cbi-button-negative', function() {
 						api.confirm('确定重启 LongOS？', function() {
 							api.call('reboot').then(function() {
@@ -127,7 +134,13 @@ return view.extend({
 						});
 					})
 				]),
-				E('p', { 'class': 'lo-hint' }, [ '配置备份/恢复请使用 LuCI 顶部「系统 - 备份/升级」功能。' ])
+				api.table([ '操作', '说明' ], [
+					[ '生成配置备份', '在本页下载 tar.gz，含 /etc/config 与 /etc/longos 等自定义配置' ],
+					[ '恢复配置', '上传备份包后执行 sysupgrade -r，不重刷固件' ],
+					[ '刷入固件', '上传 combined-efi.img.gz，sysupgrade 默认保留配置' ],
+					[ '恢复出厂', '清空配置并重启，谨慎操作' ],
+					[ '增量升级', 'SSH 执行 opkg install /tmp/longos-core_*.ipk --force-reinstall' ]
+				])
 			])
 		]);
 

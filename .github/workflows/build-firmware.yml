@@ -149,6 +149,10 @@ jobs:
                     openwrt/files/etc/accel-ppp/ip-up.sh \
                     openwrt/files/etc/accel-ppp/ip-down.sh
           find openwrt/files -maxdepth 4 -type f | sort
+          VER="$(cat overlay/etc/longos-version)"
+          printf '%s build.%s (%s)\n' "$VER" "${{ github.run_number }}" "$(git rev-parse --short HEAD)" \
+            > openwrt/files/etc/longos-build
+          cat openwrt/files/etc/longos-build
 
       - name: 生成 .config
         run: |
@@ -203,8 +207,55 @@ jobs:
           [ -s "$ISO" ] || { echo "错误：ISO 未生成: $ISO"; exit 1; }
           ls -lh "$ISO"
 
+      - name: 打包 longos-core 增量升级包
+        run: |
+          # 修复 bug 时可直接 opkg install 本包，无需重刷固件；包内不含 /etc/config
+          VER="$(cat overlay/etc/longos-version)"
+          STAGE="build/longos-core"
+          rm -rf "$STAGE" dist
+          mkdir -p "$STAGE/CONTROL" "$STAGE/usr/lib" "$STAGE/usr/sbin" "$STAGE/usr/share/luci" \
+                   "$STAGE/www/luci-static/resources/view" "$STAGE/etc/init.d" \
+                   "$STAGE/etc/accel-ppp" "$STAGE/etc/sysctl.d" dist
+          cp -a overlay/usr/lib/longos "$STAGE/usr/lib/"
+          cp -a overlay/usr/sbin/. "$STAGE/usr/sbin/"
+          cp -a overlay/www/luci-static/resources/longos "$STAGE/www/luci-static/resources/"
+          cp -a overlay/www/luci-static/resources/view/longos "$STAGE/www/luci-static/resources/view/"
+          cp -a overlay/usr/share/luci/menu.d "$STAGE/usr/share/luci/"
+          cp -a overlay/etc/init.d/. "$STAGE/etc/init.d/"
+          cp -a overlay/etc/accel-ppp/. "$STAGE/etc/accel-ppp/"
+          cp -a overlay/etc/sysctl.d/. "$STAGE/etc/sysctl.d/"
+          cp overlay/etc/longos-version "$STAGE/etc/longos-version"
+          cp openwrt/files/etc/longos-build "$STAGE/etc/longos-build"
+          {
+            echo 'Package: longos-core'
+            echo "Version: $VER-1"
+            echo 'Source: LongOS'
+            echo 'Section: net'
+            echo 'Priority: optional'
+            echo 'Maintainer: LongOS'
+            echo 'Architecture: x86_64'
+            echo 'Description: LongOS 面板脚本与前端资源（增量升级包，无需重刷固件）'
+          } > "$STAGE/CONTROL/control"
+          {
+            echo '#!/bin/sh'
+            echo '[ -x /etc/init.d/longos ] && /etc/init.d/longos restart >/dev/null 2>&1'
+            echo '[ -x /etc/init.d/longos-tuning ] && /etc/init.d/longos-tuning restart >/dev/null 2>&1'
+            echo 'exit 0'
+          } > "$STAGE/CONTROL/postinst"
+          chmod 755 "$STAGE/CONTROL/postinst" "$STAGE/usr/lib/longos/"*.sh "$STAGE/etc/init.d/"* "$STAGE/etc/accel-ppp/"*.sh
+          if [ -x openwrt/scripts/ipkg-build ]; then
+            openwrt/scripts/ipkg-build -o root -g root "$STAGE" dist
+          elif [ -x openwrt/staging_dir/host/bin/ipkg-build ]; then
+            openwrt/staging_dir/host/bin/ipkg-build -o root -g root "$STAGE" dist
+          else
+            echo "警告：未找到 ipkg-build，跳过增量升级包"
+          fi
+          ls -lh dist/ || true
+
       - name: 生成 SHA256
         run: |
+          for f in dist/*.ipk; do [ -f "$f" ] && sha256sum "$f" >> dist/SHA256SUMS; done
+          cat dist/SHA256SUMS 2>/dev/null || true
           cd openwrt/bin/targets/x86/64
           sha256sum *combined*.img.gz *combined*.iso > SHA256SUMS
           cat SHA256SUMS
@@ -219,6 +270,7 @@ jobs:
             openwrt/bin/targets/x86/64/*combined*.img.gz
             openwrt/bin/targets/x86/64/*combined*.iso
             openwrt/bin/targets/x86/64/SHA256SUMS
+            dist/*
 
       - name: 写入构建摘要
         if: always()
@@ -242,6 +294,7 @@ jobs:
             openwrt/bin/targets/x86/64/*combined*.img.gz
             openwrt/bin/targets/x86/64/*combined*.iso
             openwrt/bin/targets/x86/64/SHA256SUMS
+            dist/*
           body: |
             LongOS 固件，基于 OpenWrt ${{ env.OPENWRT_VERSION }}（x86_64 / Generic）。
 
